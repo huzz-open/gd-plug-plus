@@ -1,0 +1,7 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Godot auto-generated from messages.csv on project open
+addons/gd-plug-plus/translations/*.translation
+addons/gd-plug-plus/translations/messages.csv.import

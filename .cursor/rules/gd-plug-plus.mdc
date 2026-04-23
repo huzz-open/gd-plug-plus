@@ -1,0 +1,76 @@
+---
+description: gd-plug-plus plugin architecture and data file conventions
+globs:
+  - addons/gd-plug-plus/**
+---
+
+# gd-plug-plus
+
+Enhanced addon manager for Godot 4.x with built-in UI. Repo: `huzz-open/gd-plug-plus`.
+
+## Core Data Files
+
+### addons.json (user data — NOT in repo)
+
+Tracks all installed addons. Managed by `AddonData.gd`. Gitignored in the plugin directory.
+
+```json
+{
+  "schema_version": 1.0,
+  "repos": {
+    "user/repo-name": {
+      "url": "https://...",
+      "addons": [
+        {
+          "name": "...",
+          "addon_dir": "addons/...",
+          "branch": "main",
+          "commit": "abc123...",
+          "installed": true,
+          ...
+        }
+      ]
+    }
+  }
+}
+```
+
+### addon_index.json (community catalog — IN repo)
+
+"App store" directory for the Available tab. Ships with the plugin and updates via self-update. A plain JSON array:
+
+```json
+[
+  {
+    "url": "https://...",
+    "addons": [
+      {
+        "name": "...",
+        "addon_dir": "addons/...",
+        "branch": "main",
+        "description": "...",
+        "author": "...",
+        "type": "plugin"
+      }
+    ]
+  }
+]
+```
+
+## Key Architecture
+
+| File | Role |
+|---|---|
+| `AddonData.gd` | Data layer — addons.json CRUD, version logic, conflict detection |
+| `GitManager.gd` | Git operations — clone, checkout, fetch, copy, scan |
+| `AddonManager.gd` | UI controller — install/update/uninstall flows, tree rendering |
+| `SelectorPopup.gd` | Branch/tag/commit selector popup |
+
+## Self-Update
+
+gd-plug-plus tracks itself in `addons.json` (auto-registered on first startup via `_ensure_self_tracked()`). Updates flow through the same mechanism as any other addon. The plugin cannot be uninstalled through its own UI.
+
+When self-updating:
+- `addon_index.json` gets updated (new community entries)
+- `addons.json` is preserved (not in the repo, so copy doesn't touch it)
+- A reload toast is shown after self-update completes
