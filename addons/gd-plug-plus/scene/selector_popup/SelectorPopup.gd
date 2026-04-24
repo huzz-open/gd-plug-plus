@@ -12,6 +12,16 @@ const _DOMAIN_NAME = "gd-plug-plus"
 static func _tr(key: String) -> String:
 	return TranslationServer.get_or_add_domain(_DOMAIN_NAME).translate(key)
 
+
+static func _get_editor_scale() -> float:
+	if Engine.is_editor_hint():
+		return EditorInterface.get_editor_scale()
+	return 1.0
+
+
+static func _scaled(value: float) -> int:
+	return int(value * _get_editor_scale())
+
 var _filter: LineEdit
 var _tree: Tree
 var _loading_box: CenterContainer
@@ -25,13 +35,13 @@ var _all_groups: Array = []
 
 func _init():
 	ok_button_text = _tr("BTN_CLOSE")
-	min_size = Vector2i(360, 400)
+	min_size = Vector2i(_scaled(PlugUIConstants.SELECTOR_DEFAULT_SIZE.x), _scaled(PlugUIConstants.SELECTOR_DEFAULT_SIZE.y))
 
 
 func _ready():
 	var vbox = VBoxContainer.new()
 	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	vbox.add_theme_constant_override("separation", 4)
+	vbox.add_theme_constant_override("separation", _scaled(PlugUIConstants.SEPARATION_COMPACT))
 
 	_filter = LineEdit.new()
 	_filter.placeholder_text = _tr("BRANCH_POPUP_FILTER")
@@ -42,7 +52,7 @@ func _ready():
 	_tree = Tree.new()
 	_tree.hide_root = true
 	_tree.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_tree.custom_minimum_size = Vector2(0, 280)
+	_tree.custom_minimum_size = Vector2(0, _scaled(PlugUIConstants.SELECTOR_TREE_MIN_HEIGHT))
 	_tree.item_mouse_selected.connect(_on_tree_mouse_selected)
 	vbox.add_child(_tree)
 
@@ -51,7 +61,7 @@ func _ready():
 	_loading_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_loading_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var lhbox = HBoxContainer.new()
-	lhbox.add_theme_constant_override("separation", 8)
+	lhbox.add_theme_constant_override("separation", _scaled(PlugUIConstants.SEPARATION_STANDARD))
 	_loading_box.add_child(lhbox)
 
 	var spinner_path = "res://addons/gd-plug-plus/assets/icons/loading.svg"
@@ -60,7 +70,7 @@ func _ready():
 		_loading_spinner.texture = load(spinner_path)
 		_loading_spinner.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		_loading_spinner.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		_loading_spinner.custom_minimum_size = Vector2(20, 20)
+		_loading_spinner.custom_minimum_size = Vector2(_scaled(PlugUIConstants.SPINNER_SIZE), _scaled(PlugUIConstants.SPINNER_SIZE))
 		lhbox.add_child(_loading_spinner)
 
 	_loading_label = Label.new()
@@ -72,7 +82,7 @@ func _ready():
 	_error_label.visible = false
 	_error_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_error_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_error_label.add_theme_color_override("font_color", Color(0.95, 0.3, 0.3))
+	_error_label.add_theme_color_override("font_color", PlugUIConstants.COLOR_BEHIND)
 	_error_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_error_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	vbox.add_child(_error_label)
@@ -83,7 +93,7 @@ func _ready():
 func _process(delta: float):
 	if _loading_spinner and _loading_box.visible:
 		_loading_spinner.pivot_offset = _loading_spinner.size * 0.5
-		_loading_spinner.rotation += delta * TAU * 0.8
+		_loading_spinner.rotation += delta * TAU * PlugUIConstants.SPINNER_SPEED
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +102,7 @@ func _process(delta: float):
 
 func setup(config: Dictionary) -> void:
 	title = config.get("title", "")
-	var sz: Vector2i = config.get("size", Vector2i(360, 400))
+	var sz: Vector2i = config.get("size", Vector2i(_scaled(PlugUIConstants.SELECTOR_DEFAULT_SIZE.x), _scaled(PlugUIConstants.SELECTOR_DEFAULT_SIZE.y)))
 	min_size = sz
 	size = sz
 
@@ -180,7 +190,7 @@ func _populate(filter_text: String) -> void:
 			var h = _tree.create_item(_tree.get_root())
 			h.set_text(0, header_text)
 			h.set_selectable(0, false)
-			h.set_custom_color(0, Color(0.9, 0.8, 0.2))
+			h.set_custom_color(0, PlugUIConstants.COLOR_CHECKING)
 			for ci in range(1, _columns):
 				h.set_selectable(ci, false)
 

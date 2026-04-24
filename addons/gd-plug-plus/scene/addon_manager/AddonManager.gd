@@ -12,16 +12,16 @@ enum TREE_MODE { AVAILABLE, SEARCHING, SEARCHED }
 const PLUG_GD_PATH = "res://plug.gd"
 const PLUG_BASE_PATH = "res://addons/gd-plug-plus/plug.gd"
 const ADDON_INDEX_PATH = "res://addons/gd-plug-plus/addon_index.json"
-const COLOR_UNKNOWN = Color(0.6, 0.6, 0.6)
-const COLOR_CHECKING = Color(0.9, 0.8, 0.2)
-const COLOR_UP_TO_DATE = Color(0.3, 0.85, 0.4)
-const COLOR_BEHIND = Color(0.95, 0.3, 0.3)
-const COLOR_UPDATING = Color(0.9, 0.7, 0.1)
-const COLOR_UPDATED = Color(0.4, 0.7, 1.0)
-const COLOR_ACTION = Color(0.82, 0.82, 0.82)
-const COLOR_COMMIT = Color(0.9, 0.5, 0.5)
-const COLOR_URL = Color(0.65, 0.65, 0.65)
-const COLOR_CONFLICT = Color(0.95, 0.3, 0.3)
+const COLOR_UNKNOWN = PlugUIConstants.COLOR_UNKNOWN
+const COLOR_CHECKING = PlugUIConstants.COLOR_CHECKING
+const COLOR_UP_TO_DATE = PlugUIConstants.COLOR_UP_TO_DATE
+const COLOR_BEHIND = PlugUIConstants.COLOR_BEHIND
+const COLOR_UPDATING = PlugUIConstants.COLOR_UPDATING
+const COLOR_UPDATED = PlugUIConstants.COLOR_UPDATED
+const COLOR_ACTION = PlugUIConstants.COLOR_ACTION
+const COLOR_COMMIT = PlugUIConstants.COLOR_COMMIT
+const COLOR_URL = PlugUIConstants.COLOR_URL
+const COLOR_CONFLICT = PlugUIConstants.COLOR_CONFLICT
 
 const SELF_REPO_NAME = "huzz-open/gd-plug-plus"
 const SELF_REPO_URL = "https://github.com/huzz-open/gd-plug-plus"
@@ -102,20 +102,30 @@ var _pending_changes: Dictionary = {}
 var _is_version_switch: bool = false
 var _update_cancelled: bool = false
 
-const CONSOLE_HEADER_HEIGHT = 28
-const CONSOLE_EXPANDED_HEIGHT = 180
+var _console_header_height: int = PlugUIConstants.CONSOLE_HEADER_HEIGHT
+var _console_expanded_height: int = PlugUIConstants.CONSOLE_EXPANDED_HEIGHT
 
 
 # ===========================================================================
 # Shared helpers (used by both tabs)
 # ===========================================================================
 
+static func _get_editor_scale() -> float:
+	if Engine.is_editor_hint():
+		return EditorInterface.get_editor_scale()
+	return 1.0
+
+
+static func _scaled(value: float) -> int:
+	return int(value * _get_editor_scale())
+
+
 static func _tr(key: String) -> String:
 	return TranslationServer.get_or_add_domain("gd-plug-plus").translate(key)
 
 
 static func _short_commit(hash: String) -> String:
-	return hash.left(7) if hash.length() > 7 else hash
+	return hash.left(PlugUIConstants.SHORT_COMMIT_LENGTH) if hash.length() > PlugUIConstants.SHORT_COMMIT_LENGTH else hash
 
 
 static func _format_branch_tag(branch: String, tag: String) -> String:
@@ -162,33 +172,33 @@ func _build_commit_groups(commits: Array) -> Array:
 func _ready():
 	PlugLogger.debug("AddonManager._ready() start")
 	PlugLogger.info(_tr("LOG_PLUGGED_DIR") % GitManager.get_plugged_dir())
+	_console_header_height = _scaled(PlugUIConstants.CONSOLE_HEADER_HEIGHT)
+	_console_expanded_height = _scaled(PlugUIConstants.CONSOLE_EXPANDED_HEIGHT)
 	loading_spinner = loading_overlay.get_node("CenterContainer/VBoxContainer/HBoxContainer/TextureRect")
 	_load_addon_index()
 	_init_data()
 
-	installed_tree.columns = 10
+	var bottom_panel: MarginContainer = $"TabContainer/Installed/BottomPanel"
+	bottom_panel.add_theme_constant_override("margin_left", _scaled(PlugUIConstants.MARGIN_STANDARD))
+	bottom_panel.add_theme_constant_override("margin_top", _scaled(PlugUIConstants.MARGIN_COMPACT))
+	bottom_panel.add_theme_constant_override("margin_right", _scaled(PlugUIConstants.MARGIN_STANDARD))
+	bottom_panel.add_theme_constant_override("margin_bottom", _scaled(PlugUIConstants.MARGIN_COMPACT))
+	var bottom_hbox: HBoxContainer = bottom_panel.get_node("HBoxContainer")
+	bottom_hbox.add_theme_constant_override("separation", _scaled(PlugUIConstants.SEPARATION_STANDARD))
+	var search_bar: MarginContainer = $"TabContainer/InstallNew/SearchBar"
+	search_bar.add_theme_constant_override("margin_left", _scaled(PlugUIConstants.MARGIN_STANDARD))
+	search_bar.add_theme_constant_override("margin_top", _scaled(PlugUIConstants.MARGIN_STANDARD))
+	search_bar.add_theme_constant_override("margin_right", _scaled(PlugUIConstants.MARGIN_STANDARD))
+	search_tree.custom_minimum_size = Vector2(0, _scaled(PlugUIConstants.SEARCH_TREE_MIN_HEIGHT))
+	var overlay_vbox: VBoxContainer = loading_overlay.get_node("CenterContainer/VBoxContainer")
+	overlay_vbox.add_theme_constant_override("separation", _scaled(PlugUIConstants.SEPARATION_LARGE))
+
+	installed_tree.columns = PlugUIConstants.INSTALLED_COL_WIDTHS.size()
 	installed_tree.column_titles_visible = true
 	installed_tree.hide_root = true
-	installed_tree.set_column_expand(0, true)
-	installed_tree.set_column_custom_minimum_width(0, 40)
-	installed_tree.set_column_expand(1, true)
-	installed_tree.set_column_custom_minimum_width(1, 100)
-	installed_tree.set_column_expand(2, false)
-	installed_tree.set_column_custom_minimum_width(2, 70)
-	installed_tree.set_column_expand(3, false)
-	installed_tree.set_column_custom_minimum_width(3, 100)
-	installed_tree.set_column_expand(4, false)
-	installed_tree.set_column_custom_minimum_width(4, 80)
-	installed_tree.set_column_expand(5, false)
-	installed_tree.set_column_custom_minimum_width(5, 190)
-	installed_tree.set_column_expand(6, false)
-	installed_tree.set_column_custom_minimum_width(6, 50)
-	installed_tree.set_column_expand(7, false)
-	installed_tree.set_column_custom_minimum_width(7, 50)
-	installed_tree.set_column_expand(8, false)
-	installed_tree.set_column_custom_minimum_width(8, 60)
-	installed_tree.set_column_expand(9, false)
-	installed_tree.set_column_custom_minimum_width(9, 50)
+	for ci in range(installed_tree.columns):
+		installed_tree.set_column_expand(ci, PlugUIConstants.INSTALLED_COL_EXPAND[ci])
+		installed_tree.set_column_custom_minimum_width(ci, _scaled(PlugUIConstants.INSTALLED_COL_WIDTHS[ci]))
 	for ci in range(installed_tree.columns):
 		installed_tree.set_column_clip_content(ci, true)
 	installed_tree.item_mouse_selected.connect(_on_installed_tree_mouse_selected)
@@ -197,27 +207,12 @@ func _ready():
 	search_status_label.visible = false
 	install_selected_btn.disabled = true
 
-	search_tree.columns = 9
+	search_tree.columns = PlugUIConstants.SEARCH_COL_WIDTHS.size()
 	search_tree.column_titles_visible = true
 	search_tree.hide_root = true
-	search_tree.set_column_expand(0, false)
-	search_tree.set_column_custom_minimum_width(0, 36)
-	search_tree.set_column_expand(1, false)
-	search_tree.set_column_custom_minimum_width(1, 70)
-	search_tree.set_column_expand(2, true)
-	search_tree.set_column_custom_minimum_width(2, 110)
-	search_tree.set_column_expand(3, false)
-	search_tree.set_column_custom_minimum_width(3, 70)
-	search_tree.set_column_expand(4, false)
-	search_tree.set_column_custom_minimum_width(4, 85)
-	search_tree.set_column_expand(5, false)
-	search_tree.set_column_custom_minimum_width(5, 120)
-	search_tree.set_column_expand(6, false)
-	search_tree.set_column_custom_minimum_width(6, 100)
-	search_tree.set_column_expand(7, true)
-	search_tree.set_column_custom_minimum_width(7, 110)
-	search_tree.set_column_expand(8, true)
-	search_tree.set_column_custom_minimum_width(8, 80)
+	for ci in range(search_tree.columns):
+		search_tree.set_column_expand(ci, PlugUIConstants.SEARCH_COL_EXPAND[ci])
+		search_tree.set_column_custom_minimum_width(ci, _scaled(PlugUIConstants.SEARCH_COL_WIDTHS[ci]))
 	for ci in range(search_tree.columns):
 		search_tree.set_column_clip_content(ci, true)
 	search_tree.item_edited.connect(_on_search_tree_item_edited)
@@ -295,10 +290,10 @@ func _try_migrate_legacy():
 func _process(_delta):
 	if _search_overlay != null and _search_overlay.visible and _search_spinner != null:
 		_search_spinner.pivot_offset = _search_spinner.size * 0.5
-		_search_spinner.rotation += _delta * TAU * 0.8
+		_search_spinner.rotation += _delta * TAU * PlugUIConstants.SPINNER_SPEED
 	if loading_overlay.visible and loading_spinner != null:
 		loading_spinner.pivot_offset = loading_spinner.size * 0.5
-		loading_spinner.rotation += _delta * TAU * 0.8
+		loading_spinner.rotation += _delta * TAU * PlugUIConstants.SPINNER_SPEED
 	_update_console()
 	if _local_info_done:
 		_local_info_done = false
@@ -1751,7 +1746,7 @@ func _open_branch_tag_popup(branches: PackedStringArray, tags: PackedStringArray
 		popup.item_selected.disconnect(_on_selector_item_selected)
 	popup.setup({
 		"title": tr("BRANCH_POPUP_TITLE"),
-		"size": Vector2i(360, 400),
+		"size": Vector2i(_scaled(PlugUIConstants.BRANCH_POPUP_SIZE.x), _scaled(PlugUIConstants.BRANCH_POPUP_SIZE.y)),
 		"filter_placeholder": tr("BRANCH_POPUP_FILTER"),
 		"columns": 1,
 		"show_column_titles": false,
@@ -1768,10 +1763,10 @@ func _open_commit_popup(commits: Array):
 		popup.item_selected.disconnect(_on_selector_item_selected)
 	popup.setup({
 		"title": tr("COL_COMMIT"),
-		"size": Vector2i(520, 450),
+		"size": Vector2i(_scaled(PlugUIConstants.COMMIT_POPUP_SIZE.x), _scaled(PlugUIConstants.COMMIT_POPUP_SIZE.y)),
 		"filter_placeholder": tr("BRANCH_POPUP_FILTER"),
 		"columns": 2,
-		"column_widths": [100, 0],
+		"column_widths": [_scaled(PlugUIConstants.COMMIT_POPUP_HASH_COL_WIDTH), 0],
 		"show_column_titles": false,
 		"groups": groups,
 	})
@@ -1899,19 +1894,19 @@ func _show_commit_selector(repo_name: String, context: String):
 			_popup_done = true
 			return
 		var plug_dir = GitManager.get_plugged_dir().path_join(repo_name)
-		GitManager.git(plug_dir, ["fetch", "origin", "--deepen=50"])
+		GitManager.git(plug_dir, ["fetch", "origin", "--deepen=%d" % PlugUIConstants.FETCH_DEEPEN_COUNT])
 		var commits: Array[Dictionary] = []
 		if not eff_ref.is_empty():
-			commits = GitManager.get_commit_log(plug_dir, "origin/" + eff_ref, 50)
+			commits = GitManager.get_commit_log(plug_dir, "origin/" + eff_ref, PlugUIConstants.COMMIT_LOG_LIMIT)
 		if commits.is_empty():
 			var info = GitManager.get_current_info(plug_dir)
 			var branch = info.get("branch", "")
 			if not branch.is_empty():
-				commits = GitManager.get_commit_log(plug_dir, "origin/" + branch, 50)
+				commits = GitManager.get_commit_log(plug_dir, "origin/" + branch, PlugUIConstants.COMMIT_LOG_LIMIT)
 		if commits.is_empty():
-			commits = GitManager.get_commit_log(plug_dir, "--all", 50)
+			commits = GitManager.get_commit_log(plug_dir, "--all", PlugUIConstants.COMMIT_LOG_LIMIT)
 		if commits.is_empty():
-			commits = GitManager.get_commit_log(plug_dir, "HEAD", 50)
+			commits = GitManager.get_commit_log(plug_dir, "HEAD", PlugUIConstants.COMMIT_LOG_LIMIT)
 		_popup_result = {"type": "commit", "commits": commits, "error": "", "cache_key": cache_key}
 		_popup_done = true
 	)
@@ -2196,10 +2191,10 @@ func _on_SearchInput_text_changed(new_text: String):
 
 func _setup_search_bar():
 	var search_bar_margin = search_input.get_parent()
-	search_bar_margin.set("theme_override_constants/margin_top", 4)
+	search_bar_margin.set("theme_override_constants/margin_top", _scaled(PlugUIConstants.MARGIN_COMPACT))
 	search_bar_margin.set("theme_override_constants/margin_bottom", 0)
 	var search_hbox = HBoxContainer.new()
-	search_hbox.add_theme_constant_override("separation", 8)
+	search_hbox.add_theme_constant_override("separation", _scaled(PlugUIConstants.SEPARATION_STANDARD))
 	search_bar_margin.remove_child(search_input)
 	search_hbox.add_child(search_input)
 	search_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2208,7 +2203,7 @@ func _setup_search_bar():
 	_search_btn.pressed.connect(_on_SearchBtn_pressed)
 	search_hbox.add_child(_search_btn)
 	var spacer = Control.new()
-	spacer.custom_minimum_size = Vector2(40, 0)
+	spacer.custom_minimum_size = Vector2(_scaled(PlugUIConstants.SEARCH_BAR_SPACER_WIDTH), 0)
 	search_hbox.add_child(spacer)
 	install_selected_btn.get_parent().remove_child(install_selected_btn)
 	search_hbox.add_child(install_selected_btn)
@@ -2222,9 +2217,9 @@ func _setup_installed_filter():
 	_installed_filter_input.clear_button_enabled = true
 	_installed_filter_input.text_changed.connect(_on_installed_filter_changed)
 	var margin = MarginContainer.new()
-	margin.set("theme_override_constants/margin_left", 8)
-	margin.set("theme_override_constants/margin_top", 4)
-	margin.set("theme_override_constants/margin_right", 8)
+	margin.set("theme_override_constants/margin_left", _scaled(PlugUIConstants.MARGIN_STANDARD))
+	margin.set("theme_override_constants/margin_top", _scaled(PlugUIConstants.MARGIN_COMPACT))
+	margin.set("theme_override_constants/margin_right", _scaled(PlugUIConstants.MARGIN_STANDARD))
 	margin.set("theme_override_constants/margin_bottom", 0)
 	margin.add_child(_installed_filter_input)
 	installed_vbox.add_child(margin)
@@ -2339,11 +2334,11 @@ func _show_detail_dialog(repo_name: String):
 	var dialog = AcceptDialog.new()
 	dialog.title = tr("DETAIL_TITLE")
 	dialog.ok_button_text = tr("BTN_CLOSE")
-	dialog.min_size = Vector2i(480, 0)
+	dialog.min_size = Vector2i(_scaled(PlugUIConstants.DETAIL_DIALOG_MIN_WIDTH), 0)
 	var grid = GridContainer.new()
 	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 16)
-	grid.add_theme_constant_override("v_separation", 8)
+	grid.add_theme_constant_override("h_separation", _scaled(PlugUIConstants.DETAIL_H_SEPARATION))
+	grid.add_theme_constant_override("v_separation", _scaled(PlugUIConstants.DETAIL_V_SEPARATION))
 	var fields = [
 		[tr("DETAIL_NAME"), first_addon.get("name", repo_name)],
 		[tr("DETAIL_DESC"), first_addon.get("description", "")],
@@ -2363,10 +2358,10 @@ func _show_detail_dialog(repo_name: String):
 		var val_label = Label.new()
 		val_label.text = str(f[1])
 		val_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		val_label.custom_minimum_size = Vector2(300, 0)
+		val_label.custom_minimum_size = Vector2(_scaled(PlugUIConstants.DETAIL_LABEL_MIN_WIDTH), 0)
 		grid.add_child(val_label)
 	var vbox = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 12)
+	vbox.add_theme_constant_override("separation", _scaled(PlugUIConstants.SEPARATION_LARGE))
 	vbox.add_child(grid)
 	if not url.is_empty():
 		var open_btn = Button.new()
@@ -2390,13 +2385,13 @@ func _setup_search_overlay():
 	_search_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_search_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var hbox = HBoxContainer.new()
-	hbox.add_theme_constant_override("separation", 8)
+	hbox.add_theme_constant_override("separation", _scaled(PlugUIConstants.SEPARATION_STANDARD))
 	_search_overlay.add_child(hbox)
 	_search_spinner = TextureRect.new()
 	_search_spinner.texture = preload("res://addons/gd-plug-plus/assets/icons/loading.svg")
 	_search_spinner.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_search_spinner.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_search_spinner.custom_minimum_size = Vector2(20, 20)
+	_search_spinner.custom_minimum_size = Vector2(_scaled(PlugUIConstants.SPINNER_SIZE), _scaled(PlugUIConstants.SPINNER_SIZE))
 	hbox.add_child(_search_spinner)
 	_search_overlay_label = Label.new()
 	_search_overlay_label.text = tr("SEARCHING")
@@ -2415,11 +2410,11 @@ func _setup_console():
 	_console_panel.anchor_bottom = 1.0
 	_console_panel.anchor_left = 0.0
 	_console_panel.anchor_right = 1.0
-	_console_panel.offset_top = -CONSOLE_HEADER_HEIGHT
+	_console_panel.offset_top = -_console_header_height
 	_console_panel.offset_bottom = 0
 	var vbox = VBoxContainer.new()
 	var header = HBoxContainer.new()
-	header.add_theme_constant_override("separation", 8)
+	header.add_theme_constant_override("separation", _scaled(PlugUIConstants.SEPARATION_STANDARD))
 	_console_toggle_btn = Button.new()
 	_console_toggle_btn.flat = true
 	_console_toggle_btn.pressed.connect(_toggle_console)
@@ -2437,11 +2432,11 @@ func _setup_console():
 	_console_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_console_log.selection_enabled = true
 	_console_log.visible = false
-	_console_log.add_theme_font_size_override("normal_font_size", 12)
+	_console_log.add_theme_font_size_override("normal_font_size", _scaled(PlugUIConstants.CONSOLE_FONT_SIZE))
 	vbox.add_child(_console_log)
 	_console_panel.add_child(vbox)
 	add_child(_console_panel)
-	tab_container.offset_bottom = -CONSOLE_HEADER_HEIGHT
+	tab_container.offset_bottom = -_console_header_height
 	move_child(loading_overlay, -1)
 
 
@@ -2449,14 +2444,14 @@ func _toggle_console():
 	_console_collapsed = not _console_collapsed
 	if _console_collapsed:
 		_console_toggle_btn.text = tr("CONSOLE_COLLAPSED")
-		_console_panel.offset_top = -CONSOLE_HEADER_HEIGHT
+		_console_panel.offset_top = -_console_header_height
 		_console_log.visible = false
-		tab_container.offset_bottom = -CONSOLE_HEADER_HEIGHT
+		tab_container.offset_bottom = -_console_header_height
 	else:
 		_console_toggle_btn.text = tr("CONSOLE_EXPANDED")
-		_console_panel.offset_top = -CONSOLE_EXPANDED_HEIGHT
+		_console_panel.offset_top = -_console_expanded_height
 		_console_log.visible = true
-		tab_container.offset_bottom = -CONSOLE_EXPANDED_HEIGHT
+		tab_container.offset_bottom = -_console_expanded_height
 
 
 func _clear_console():
@@ -2478,7 +2473,7 @@ func _show_toast(msg: String, is_error: bool = false):
 	var dialog = AcceptDialog.new()
 	dialog.title = tr("TOAST_ERROR") if is_error else tr("TOAST_INFO")
 	dialog.dialog_text = msg
-	dialog.min_size = Vector2i(360, 0)
+	dialog.min_size = Vector2i(_scaled(PlugUIConstants.TOAST_MIN_WIDTH), 0)
 	add_child(dialog)
 	dialog.popup_centered()
 	dialog.confirmed.connect(dialog.queue_free)
