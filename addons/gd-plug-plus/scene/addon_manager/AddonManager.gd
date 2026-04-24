@@ -515,7 +515,7 @@ func _refresh_unified_tree(filter_text: String = ""):
 			var item = search_tree.create_item(search_tree.get_root())
 
 			item.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
-			item.set_checked(0, not has_conflict and not already_installed)
+			item.set_checked(0, false)
 			item.set_editable(0, not already_installed)
 
 			if already_installed:
@@ -2295,8 +2295,10 @@ func _update_search_tree_install_status():
 					has_conflict = not addon_data.check_dir_conflicts([pdir], existing_addons).is_empty()
 				child.set_meta("has_conflict", has_conflict)
 				if is_installed:
+					child.set_checked(0, false)
 					child.clear_custom_color(2)
 					child.set_tooltip_text(2, repo_url)
+					_refresh_available_item_from_installed(child, rn, pdir)
 				elif has_conflict:
 					child.set_custom_color(2, COLOR_CONFLICT)
 					child.set_tooltip_text(2, repo_url + "\n" + tr("CONFLICT_DIR_EXISTS") % pdir)
@@ -2304,8 +2306,40 @@ func _update_search_tree_install_status():
 				else:
 					child.clear_custom_color(2)
 					child.set_tooltip_text(2, repo_url)
-					child.set_checked(0, true)
 		child = child.get_next()
+
+
+func _refresh_available_item_from_installed(item: TreeItem, repo_name: String, addon_dir: String):
+	var installed_addons = addon_data.get_installed_addons(repo_name)
+	var match_addon: Dictionary = {}
+	for p in installed_addons:
+		if p.get("addon_dir", "") == addon_dir:
+			match_addon = p
+			break
+	if match_addon.is_empty() and not installed_addons.is_empty():
+		match_addon = installed_addons[0]
+	if match_addon.is_empty():
+		return
+
+	var ver: String = match_addon.get("version", "")
+	item.set_text(3, ("v" + ver) if not ver.is_empty() else "-")
+	item.set_text_alignment(3, HORIZONTAL_ALIGNMENT_CENTER)
+
+	var branch: String = match_addon.get("branch", "")
+	var tag: String = match_addon.get("tag", "")
+	item.set_text(5, _format_branch_tag(branch, tag))
+	item.set_custom_color(5, COLOR_UPDATED)
+	item.set_text_alignment(5, HORIZONTAL_ALIGNMENT_CENTER)
+
+	var cached = _version_cache.get(repo_name, {})
+	var commit_str: String = ""
+	if cached.has("current_commit") and not cached["current_commit"].is_empty():
+		commit_str = _short_commit(cached["current_commit"])
+	elif not match_addon.get("commit", "").is_empty():
+		commit_str = _short_commit(match_addon["commit"])
+	item.set_text(6, commit_str if not commit_str.is_empty() else "-")
+	item.set_custom_color(6, COLOR_UPDATED)
+	item.set_text_alignment(6, HORIZONTAL_ALIGNMENT_CENTER)
 
 
 func _set_checked_items_status(status_text: String, color: Color):
