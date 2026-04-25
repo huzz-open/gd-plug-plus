@@ -29,6 +29,8 @@ All three formats must be accepted:
 [
   {
     "url": "https://github.com/user/repo",
+    "with_release": true,
+    "release_asset_pattern": "addon-*-gdextension-*.zip",
     "addons": [
       {
         "name": "Plugin Name",
@@ -44,9 +46,20 @@ All three formats must be accepted:
 ```
 
 Field notes:
-- `type`: `"plugin"` for plugin.cfg, `"extension"` for .gdextension
+- `type`: `"plugin"` for plugin.cfg, `"extension"` for *.gdextension
 - `addon_dir`: relative path from repo root (e.g. `addons/my_addon`)
 - `branch`: the repo's default branch (usually `main` or `master`)
+- `with_release` (optional, default `true`): set to `false` to skip Release API queries for this repo
+- `release_asset_pattern` (optional): glob pattern to match Release asset filenames (e.g. `godotsteam-*-gdextension-*.zip`). If omitted, AssetMatcher uses default heuristics (archives excluding "source code")
+
+### Extension indexing notes
+
+GDExtension addons typically distribute pre-compiled binaries via GitHub/Codeberg/Gitee Releases rather than source code in the repo. When indexing an Extension:
+
+1. The repo source may NOT contain `*.gdextension` files — they are bundled inside Release archives
+2. Set `with_release: true` (default) so the UI can search Release assets
+3. Provide `release_asset_pattern` if the release archive names follow a specific pattern
+4. Set `type: "extension"` for the addon entry
 
 ## Workflow
 

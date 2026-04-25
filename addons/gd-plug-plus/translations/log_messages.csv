@@ -2,9 +2,15 @@ keys,en,zh_CN
 LOG_PLUGGED_DIR,Plugged dir: %s,仓库缓存目录: %s
 LOG_SEARCH_START,Searching repo: %s,开始搜索仓库: %s
 LOG_SEARCH_DONE,Search complete,搜索完成
+LOG_SOURCE_SCAN_DONE,Repo scan complete,仓库扫描完成
+LOG_RELEASE_SEARCH_START,Querying Release API...,正在查询 Release API...
+LOG_RELEASE_SEARCH_DONE,Release query complete (%d found),Release 查询完成 (%d 个)
 LOG_SEARCH_CANCELLED,Search cancelled,搜索已取消
 LOG_INSTALL_START,Installing %s ...,正在安装 %s ...
 LOG_INSTALL_DONE,Install complete,安装完成
+LOG_INSTALL_CANCELLED,Install cancelled,安装已取消
+LOG_INSTALL_PARTIAL,Install finished with %d failure(s),安装完成，%d 个仓库失败
+LOG_INSTALL_FAILED,Install failed (%d repo(s)),安装失败（%d 个仓库）
 LOG_UPDATE_CANCELLED,Update/switch cancelled,更新/切换已取消
 LOG_CHECK_CANCELLED,Version check cancelled,版本检查已取消
 LOG_REMOTE_QUERY,Querying remote repo %s ...,正在查询远程仓库 %s ...
@@ -48,3 +54,6 @@ LOG_CLI_REINSTALLING,%s reinstalling ...,%s 正在重新安装 ...
 LOG_CLI_OVERWRITE_ABORT,"Installation of %s terminated to avoid overwriting user files, you may disable safe mode with command ""force""","安装 %s 已终止以避免覆盖用户文件，可使用 ""force"" 命令禁用安全模式"
 LOG_CLI_PLUGIN_DOWNLOADED,Plugin already downloaded,插件已下载
 LOG_CLI_CHANGES,%s changed %s,%s 变更了 %s
+LOG_TOKEN_MIGRATED,Migrated tokens from user:// to global encrypted config,Token 已从 user:// 迁移到全局加密配置
+LOG_TOKEN_LOAD_FAILED,Failed to decrypt tokens (machine ID may have changed){SEP} please re-enter,令牌解密失败（机器 ID 可能变更），请重新填写
+LOG_TOKEN_SAVE_FAILED,Failed to write encrypted token file,写入加密令牌文件失败

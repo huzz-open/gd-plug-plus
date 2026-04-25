@@ -43,9 +43,10 @@ static func _write(msg: String, is_debug: bool) -> void:
 		_open_file()
 		if _file != null:
 			var d = Time.get_datetime_dict_from_system()
-			var header = "\n========== SESSION %04d-%02d-%02d %02d:%02d:%02d ==========\n" % [
-				d.year, d.month, d.day, d.hour, d.minute, d.second
-			]
+			var header = (
+				"\n========== SESSION %04d-%02d-%02d %02d:%02d:%02d ==========\n"
+				% [d.year, d.month, d.day, d.hour, d.minute, d.second]
+			)
 			_file.store_string(header)
 			var real_path = ProjectSettings.globalize_path(LOG_FILE_PATH)
 			_file.store_line("[log-file] path = %s" % real_path)

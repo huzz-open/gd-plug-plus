@@ -22,7 +22,9 @@ func _enter_tree():
 
 func _exit_tree():
 	if is_instance_valid(addon_manager):
-		remove_control_from_container(EditorPlugin.CONTAINER_PROJECT_SETTING_TAB_LEFT, addon_manager)
+		remove_control_from_container(
+			EditorPlugin.CONTAINER_PROJECT_SETTING_TAB_LEFT, addon_manager
+		)
 		addon_manager.queue_free()
 	TranslationServer.remove_domain(DOMAIN_NAME)
 
@@ -47,4 +49,9 @@ func _load_translations():
 	dir.list_dir_end()
 
 	var sample := domain.translate("TAB_INSTALLED")
-	PlugLogger.debug("TranslationDomain '%s': %d translations loaded, locale=%s, tr('TAB_INSTALLED')='%s'" % [DOMAIN_NAME, count, TranslationServer.get_locale(), sample])
+	PlugLogger.debug(
+		(
+			"TranslationDomain '%s': %d translations loaded, locale=%s, tr('TAB_INSTALLED')='%s'"
+			% [DOMAIN_NAME, count, TranslationServer.get_locale(), sample]
+		)
+	)

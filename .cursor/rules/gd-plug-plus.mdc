@@ -74,3 +74,335 @@ When self-updating:
 - `addon_index.json` gets updated (new community entries)
 - `addons.json` is preserved (not in the repo, so copy doesn't touch it)
 - A reload toast is shown after self-update completes
+
+## Search Tree Row Taxonomy
+
+`_on_SearchBtn_pressed` → `_finalize_search_display` 从同一 URL 可以产生多种行，`_build_release_addons` 是判断关键。行类型与元数据如下：
+
+| 行类型 | 来源 | `_from_release` | `_release_is_stub` | `type` | `addon_dir` | `name` 取自 |
+|---|---|---|---|---|---|---|
+| Source Plugin / Source Extension | `GitManager.scan_local_addons` 扫到 `plugin.cfg` / `*.gdextension` | `false` | `false` | `plugin` / `extension` | 源码目录 | `plugin.cfg` / `*.gdextension` |
+| Release + Source 回填 | `_build_release_addons` 中 `source_addons` 非空时，为每个源码行复制一份并打上 Release 字段 | `true` | `false` | 同源码行 | 同源码行 | 同源码行 |
+| Release Stub | `_build_release_addons` 中 `source_addons` 为空，只有 Release API + pattern | `true` | `true` | **空字符串**（未知，列 4 显示 `-- [R]`） | `""` | asset basename |
+
+## 占位符约定
+
+所有"未知/无值"的单元格统一显示 `--`（双连字符），不要混用 `-`、`?`、空字符串、`N/A` 等。涉及位置：
+- 搜索树未安装版本 (col 3)、未安装 commit (col 6)、Release stub 未知 type (col 4)
+- Release 行的 commit 列（一律 `--`，因为 Release 不跟 commit）
+- 已装行从 release 反查 (`_refresh_available_item_from_installed`) 时 `installed_tag` / `version` / `commit` 任何为空字段都用 `--`
+- 已装树（`_refresh_installed_tree`）的 release 行 commit 列同理
+
+新增 UI 文本字段时，遇到"无内容"先复用 `"--"` 字面量，不要自己 fork 一套。
+
+Release 行上额外的 meta / info 字段（由 `_finalize_search_display` 写入）：
+
+- `item.meta("from_release")` = true
+- `item.meta("selected_tag")` = 当前选中的 release tag（对应列 5）
+- `item.meta("release_tags")` + `item.meta("release_tag_assets")`：为每个 tag 保留 **pattern 过滤后的全部 assets 数组**（元素含 `{url, name, filename, size}`），用于 `_remote_ref_cache` 清空后的回退。
+- `item.meta("release_asset_filename")`：当前选中的 asset filename，用于切 tag 时保留用户选择。
+- `info["_release_tag"]` / `info["_release_asset_url"]` / `info["_release_asset_filename"]` / `info["_release_is_stub"]`：安装流程（`ReleaseInstallCommand`）从这里读数据。
+
+## 搜索树列 7 语义
+
+列 7 列标题是**单一**的（`COL_REPO_PATH` = `Path / Release Asset` / `路径 / Release 资源`），要同时兼容"仓库内路径"与"Release 资源包名"两种语义。展示/交互按**行类型**决定：
+
+| 行类型 | 列 7 文本 | 列 7 可点击 | 点击行为 |
+|---|---|---|---|
+| Source 行 | `addon_dir` | 否 | — |
+| Release + Source 回填 | `addon_dir`（源码安装路径不随 asset 变化），tooltip 带当前 asset filename | 是 | 打开 Release asset 选择器，仅改 `_release_asset_url` / `_release_asset_filename` 与 tooltip |
+| Release Stub | 当前 asset 的 basename | 是 | 打开 Release asset 选择器，同步列 2（名称）、列 7 与 `info["name"]` / `_release_asset_url` |
+
+切 Tag 时延续 asset 选择：从新 tag 的 assets 数组里按旧 `release_asset_filename` 做文件名匹配；找到则沿用，找不到回退 `matched[0]`。整个链路统一复用 `_apply_release_asset_selection(item, asset)`。
+
+### Tag/Asset 切换的 `_release_tag` 同步契约
+
+`_apply_release_asset_selection` 是**单点真相**：它从 `item.meta("selected_tag")` 把当前显示 tag 同步到 `info["_release_tag"]`，再写回 `item.set_meta("addon_info", info)`。**禁止**只更新 `selected_tag` meta 而不调 `_apply_release_asset_selection`，否则 install 端读到的 `_release_tag` 会停留在搜索时的初始 tag，导致下载 URL 用新 tag、cache_dir/zip 文件名却是旧 tag 的诡异行为（典型表现：`tag=v1.3.6` 但 `?ref=v1.8.0`）。
+
+`_on_InstallSelectedBtn_pressed` 与 `_install_from_available` 在构造 `entry` 时另做一道防御性补刀：若 `entry["_from_release"]` 为真，则 `entry["_release_tag"] = entry["_tag"]`（`_tag` 来自 `selected_tag` meta），保证即使上游 meta 链路有遗漏，install 也总用用户最后看到的 tag。
+
+## Release 安装期校验（下载后、解压前）
+
+Release zip 下载完成后 `ReleaseManager._extract_and_cleanup` 先用 `ZIPReader.get_files()` 拿到文件清单并调用 `_inspect_archive_contents(files)` 做**不解压校验**：
+
+- 清单里存在 `plugin.cfg` → `type = "plugin"`；否则清单里存在 `*.gdextension` → `type = "extension"`；两者都没有 → 拒绝安装。
+- 拒绝路径：关闭 reader → 记录 `_last_error = "ERR_RELEASE_NO_GODOT_CONTENT"` → 删除 zip → 删除空 cache_dir → 返回 `false`，`download_completed(false, "")`。
+- 成功路径：把结果写入 `_last_detected_type` / `_last_detected_addon_dirs`，正常继续解压。
+
+`AddonManager` 端：
+- `download_completed(false, _)` 时调 `_abort_release_install(repo_name, tag, get_last_error())`：如果仓库还没真正装上任何 addon 就回滚 `addons.json`（`remove_repo`），把 `repo_name → err_key` 登记到 `_install_failures`，再 `_installing_repos.erase(repo_name)`，最后 `_install_done = true` 让 UI 循环恢复。**不要**在这里直接 toast，汇总由 `_on_install_completed` 统一做，避免"提示安装完成又显示错误"的矛盾。
+- 成功解压后 `_apply_release_install` 结束时调 `_backfill_release_addon_metadata(repo_name, cache_dir)`，用 `ReleaseManager.get_last_detected_type()` + `GitManager.scan_local_addons(cache_dir)` 的结果，把真实 `type` / `name` / `description` / `version` / `author` 写回 `addons.json`，解决 Stub 行安装前列 4 只能显示 `[R] ?` 的问题。
+- 已安装 Tab 切 Release Tag 走 `_apply_release_from_cache`，拷完文件后必须先 `release_manager.inspect_cache_dir(cache_dir)` 刷新 `_last_detected_type`（缓存命中时它可能停留在上一个 tag 的值），再 `_backfill_release_addon_metadata(repo_name, cache_dir, true)` 用 `force_overwrite=true` 把新 tag 的 `name` / `description` / `version` / `author` **强制覆盖**写回 `addons.json`。安装期默认 `force_overwrite=false`（仅在空时填）是为了不抹掉用户/索引的兜底值；版本切换是版本相关字段，必须刷新，所以走强制路径。`ReleaseManager.inspect_cache_dir` 是公开 API，不能改回 `_inspect_cache_dir`。
+- `_apply_release_from_cache` 跑在 `WorkerThreadPool`，里面**禁止**用 `Node.tr()`（`get_translation_domain()` 不是线程安全的，会抛 `can only be accessed from main thread`，且因为 `tr()` 失败返回 key 字面量，紧跟的 `% new_tag` 还会再炸一次 `not all arguments converted during string formatting`）。worker 内的所有 `PlugLogger.info` 翻译都必须走静态助手 `_tr(key)`（基于 `TranslationServer.get_or_add_domain("gd-plug-plus").translate`），与 `_run_install` / `_on_install_completed` / `_on_update_completed` 等其它 worker 路径保持一致。
+
+## 安装批次成功/失败汇总
+
+`_execute_install` 进入时 `_install_failures.clear()`。每个 repo 失败（当前仅 release 路径走 `_abort_release_install`）都会把 `repo_name → err_key` 写入 `_install_failures`。
+
+`_on_install_completed` 读取 `_install_failures` 决定最终 UI：
+- **全成功**（字典空）：`install_selected_btn.text = BTN_INSTALL_DONE`，日志 `LOG_INSTALL_DONE`，所有勾选行状态 = `STATUS_INSTALLED` + `COLOR_UP_TO_DATE`（原逻辑）。
+- **部分失败**：`BTN_INSTALL_PARTIAL`（"部分安装失败"），日志 `LOG_INSTALL_PARTIAL`，成功行 `STATUS_INSTALLED` + 绿，失败行 `STATUS_FAILED` + `COLOR_CONFLICT` 红。
+- **全失败**：`BTN_INSTALL_FAILED`，日志 `LOG_INSTALL_FAILED`，所有勾选行 `STATUS_FAILED` + 红。
+- 失败场景统一弹一个 toast（`TOAST_INSTALL_FAILED_HEADER` + 每行 `• repo — tr(err_key)`），不要逐条 toast。
+
+行级状态靠 `_apply_install_final_row_status(failures)` 走 `search_tree.get_root()` 迭代，用 `child.get_meta("repo")` → `GitManager.repo_name_from_url` → 查 `failures` 字典判定。
+
+i18n keys：
+- `translations/messages.csv`：`ERR_RELEASE_*`、`STATUS_FAILED`、`BTN_INSTALL_PARTIAL`、`BTN_INSTALL_FAILED`、`TOAST_INSTALL_FAILED_HEADER`。
+- `translations/log_messages.csv`：`LOG_INSTALL_PARTIAL`、`LOG_INSTALL_FAILED`。
+
+## 已安装 Tab 不显示安装中的行
+
+设计契约：**已安装 Tab 只列真正完成安装的 repo**，正在安装的不暴露给用户（避免出现"安装中却显示已装"的歧义）。
+
+实现：`_refresh_installed_tree` 遍历 `addon_data.get_all_repos_for_ui()` 时，**第一件事**就是 `if repo_name in _installing_repos: continue` 跳过。原因：
+
+- `_execute_install` / `_install_repo_manual` 必须在下载/解压**之前**就把 addon 写成 `installed=true`，才能让 worker 任务有完整的 entry 可操作（这是 `addons.json` 的运行时合约，不能改）。
+- 但用户视角下，这条记录此时还不算"装好"，让它出现在已装 Tab 上反而误导（之前的 bug：失败后 ghost 行残留）。
+- 安装中状态用户能在**搜索 Tab** 看到（`STATUS_INSTALLING` 写在 search_tree 行 1 列）以及"安装"按钮文案上（`BTN_INSTALLING`），信息没丢。
+
+**禁止**在 `_refresh_installed_tree` 渲染逻辑里再写"if installing then 显示 commit=`...`"之类的分支 —— installing 行根本进不到渲染，那是 dead code。
+
+`_get_update_action_text` / `_get_update_action_color` 里的 `if repo_name in _installing_repos` 分支当前已无效（因为持有该函数调用的行已被过滤），保留只是防御性，不要依赖。
+
+## 安装失败的 addons.json 回滚（pre-batch snapshot）
+
+上一节解决了"安装中不在已装 Tab 露面"，但还需要兜底：**安装失败结束后**，`_installing_repos` 清空，已装 Tab 又开始渲染所有 repo —— 如果 `addons.json` 里残留了失败 repo 的 `installed=true` 记录，ghost 行就会重新出现。所以下面这套 snapshot 回滚是**必须的配套**。
+
+`_execute_install` 在真正下载/解压之前**总是**调 `addon_data.set_addon_installed(repo_name, pdir, true)`。这意味着任何失败路径如果不主动回滚，addons.json 就会留下"假装已装"的 ghost 记录。
+
+机制：
+
+1. `_execute_install` 入口（在 `add_repo_from_search` **之前**）扫描 `selected` 计算出本批次会触碰到的所有 repo（目标 repo + 所有 `find_owner_repo` 命中的 old owners），把 `_install_pre_snapshots[rn]` 设为：
+   - `addon_data.get_repo(rn).duplicate(true)`（已存在 → 深拷贝整个 repo dict）
+   - `null`（不存在 → 标记"本批次新建"）
+2. `_abort_release_install` → `_rollback_repo_to_snapshot(repo_name)`：
+   - snapshot 是 `null` → `addon_data.remove_repo(repo_name)`（彻底清掉新建的 ghost repo）
+   - snapshot 是 dict → `addon_data.set_repo(repo_name, snap)`（把整个 repo 恢复到批次开始前的样子，包括 `installed` / `installed_tag` / `installed_asset_filename` 等所有字段）
+   - 没 snapshot（异常路径）→ 仅当当前 repo 没有任何 `installed=true` 的 addon 才删，避免误伤
+3. `_on_install_completed` 末尾 `_install_pre_snapshots.clear()`，避免跨批次残留。
+
+**禁止**用 `get_installed_addons(repo_name).is_empty()` 作为回滚条件 —— 因为 `_execute_install` 已经把 `installed` 设成 true 了，这个判断永远是 false。snapshot 才是唯一可信状态。
+
+附注：`_run_install`（手动 git URL 安装）当前在 `shallow_clone` 失败时只 `_install_done = true` 不做回滚，会留下 ghost repo；如果将来要修，复用 `_rollback_repo_to_snapshot` 即可（已经支持非 release 仓库）。
+
+## Release Token 配置
+
+Release 平台 API（GitHub / Codeberg / Gitee）通常需要 token 才能稳定使用（避免 rate-limit / 401）。本插件用**全局加密文件**保存令牌，多个 Godot 项目共享，**唯一 UI 入口**为 AddonManager 的「设置」Tab（Tab index 2）。
+
+### 数据/代码层
+
+| 文件 | 角色 |
+|---|---|
+| `release/TokenStore.gd` | Token + Client ID 持久化层；机器绑定密码加密；含平台元数据 (PLATFORM_META)；单实例由 `ReleaseManager._token_store` 持有，外部通过 `release_manager.get_token_store()` 拿同一份。 |
+| `release/GitHubDeviceFlow.gd` | GitHub OAuth Device Authorization 异步实现，全程信号驱动（`code_received` / `succeeded` / `failed`），用 HTTPRequest + Timer 轮询，**不阻塞主线程**。 |
+| `scene/addon_manager/AddonManager.gd` 中 `_setup_settings_tab` 节 | 设置 Tab 全 UI（PAT 行 + 快速申请 + GitHub Device Flow 块），纯代码生成。 |
+
+### 全局加密存储
+
+- **路径**：`OS.get_config_dir() / "gd-plug-plus" / "tokens.dat"`（Win 在 `%AppData%\Godot\app_userdata` 体系外的真正全局位置；Linux 在 `~/.config`；macOS 在 `~/Library/Application Support`）。
+- **加密**：`FileAccess.open_encrypted_with_pass`，密码 = `("gd-plug-plus|v1|" + OS.get_unique_id()).sha256_text()`。**机器绑定**：换机/重装系统会解密失败，由设计 — 用户重新输入即可（日志 `LOG_TOKEN_LOAD_FAILED`）。
+- **明文 schema**：
+  ```json
+  {
+    "tokens":     { "github": "ghp_...", "codeberg": "...", "gitee": "..." },
+    "client_ids": { "github": "<override-鲜少用到>" }
+  }
+  ```
+- **跨项目**：所有 Godot 项目读同一份文件，配一次到处用。
+
+### 一次性迁移：user:// → 全局加密
+
+`load_tokens()`：
+1. 新文件存在 → 解密读取，结束。
+2. 新文件不存在 + `user://gd-plug-plus-tokens.json` 存在 → 走 `_migrate_from_legacy()`：读旧明文 JSON（兼容旧版扁平 `{platform: token}` 与 `{tokens, client_ids}` 两种 schema）→ 调 `save()` 写新加密文件 → `DirAccess.remove_absolute(globalize_path(LEGACY_PATH))` 删旧文件 → 打 `LOG_TOKEN_MIGRATED` 日志。
+
+迁移是**幂等+一次性**的：旧文件被删后下次启动直接走步骤 1。**禁止**在 `_migrate_from_legacy` 失败路径里继续保留旧文件 — 否则下次启动会反复迁移。
+
+### 设置 Tab 结构（Editor Settings 风格）
+
+`AddonManager.tscn` 的 `Settings` 节点是 `HBoxContainer`，分两栏：
+
+```
+TabContainer/Settings (HBoxContainer)
+├── SettingsSidebar (PanelContainer, min-width 160)
+│   └── SettingsSidebarVBox (VBoxContainer)
+│       └── 分类 toggle Button × N（flat、左对齐、SIZE_EXPAND_FILL）
+└── SettingsContentScroll (ScrollContainer)
+    └── SettingsContent (VBoxContainer, 当前只放一个 page Control)
+```
+
+**分类切换**用 `_select_settings_category(key)`：遍历 `_settings_categories[key] = {button, content, i18n_key}`，按 `cat == key` 设 `content.visible` 与 `button.button_pressed`。所有分类 page 都在 `_setup_settings_tab` 一次性构建，**不要 lazy build** —— 因为切换是高频操作（每次 pre-check 重定向都可能触发），重建会丢输入框焦点 + 导致状态字典 dangling。
+
+加新分类的样板：
+
+```gdscript
+var my_panel := _build_my_category_panel(margin)
+content_vbox.add_child(my_panel)
+_register_settings_category("my_key", sidebar_vbox, "SETTINGS_CATEGORY_MY_KEY", my_panel)
+```
+
+#### 「认证」分类（auth）面板
+
+每平台一个 `PanelContainer`（外面包一层 `MarginContainer` 用于 flash modulate 动画隔离），结构：
+
+```
+[Header] [LinkButton] 平台名 ←可点击跳 apply_url    [Status 图标] [检测]
+[LineEdit secret, text=current_token] PAT/已存令牌    [Save] [Clear]
+─────────────────  ← HSeparator，仅 GitHub 出现以下行
+[Button] 使用 GitHub 登录   ← Device Flow 入口（弹窗，详见下文）
+```
+
+**配置态判定 = 输入框是否有值**：`_refresh_platform_row` 把 `TokenStore.get_masked_token(key)` 写回 `pat_input.text`（不用 `secret=true`，用户直接看到 `ghp_****ABCD` 这种头尾可见的掩码形式）。三种平台行为统一。
+
+**掩码值保护**：输入框无焦点时显示掩码值，有焦点时自动清空让用户粘贴新 token。`row["user_edited"]` 标志用于区分"用户输入的真实 token"和"程序填充的掩码"。`_on_pat_save` 只在 `user_edited == true` 时才实际保存，**禁止**把掩码值写回 `TokenStore`。标志在以下时机重置为 `false`：`_refresh_platform_row`（程序刷新）、`_on_pat_input_focus_exited`（用户什么都没输入就退出）。
+
+**平台名即申请按钮**：`name_link` 是 `LinkButton`，`tooltip = PLATFORM_LINK_TOOLTIP`，`pressed → OS.shell_open(apply_url)`。**禁止**再加独立的"快速申请"按钮 — 已合并到平台名。
+
+**Client ID 不出现在 UI**：`TokenStore.get_client_id("github")` 永远拿 `PLATFORM_META.github.default_client_id` (`Ov23libsMl8RtkqojQaM`)。`set_client_id` / `has_custom_client_id` 仍保留为后续可能的高级功能扩展点，UI 不调。
+
+#### Status 图标 + 检测按钮
+
+把"已配置/未配置"语义换成**可用性**语义。每行右上角一个 `Label` 图标 + 一个 `Button`（"检测"）：
+
+| `validation_state` | 图标 | 颜色 | tooltip i18n key |
+|---|---|---|---|
+| (无 token) | `—` `STATUS_VALIDATE_NONE` | `COLOR_UNKNOWN` | `STATUS_VALIDATE_NONE_TOOLTIP` |
+| `UNKNOWN` (有 token，没检测过) | `?` `STATUS_VALIDATE_UNKNOWN` | `COLOR_UNKNOWN` | `STATUS_VALIDATE_UNKNOWN_TOOLTIP` |
+| `PENDING` | `…` `STATUS_VALIDATE_PENDING` | `COLOR_CHECKING` | `STATUS_VALIDATE_PENDING_TOOLTIP` |
+| `OK` | `✓` `STATUS_VALIDATE_OK` | `COLOR_UP_TO_DATE` | `STATUS_VALIDATE_OK_TOOLTIP` |
+| `FAIL` | `✗` `STATUS_VALIDATE_FAIL` | `COLOR_CONFLICT` | `STATUS_VALIDATE_FAIL_TOOLTIP` (+ 实际错误信息追加在第二行) |
+
+**state 写入点（必须严格遵守）**：
+- 初始化、保存、清除、用户编辑输入框 → `UNKNOWN`
+- 点「检测」期间 → `PENDING`
+- HTTPRequest 回调成功 (2xx) → `OK`
+- HTTPRequest 回调失败 (网络错误 / 非 2xx) → `FAIL`，并把人类可读错误填到 `validation_error_tooltip`
+
+`_paint_status_icon(row, has_token)` 是**单点写图标真相**，所有改 `validation_state` 的地方写完 dict 之后必须调它一次。
+
+#### 检测端点契约
+
+`ReleaseProvider.get_validate_url(token)` 返回一个**已知公开仓库的 Release 查询 URL**。使用 Release 端点而非 `/user`，是因为这跟真实业务（查询 Release）行为一致：能查到 Release 才算有效。带合法 token → 200，带无效 token → 401（已用 curl 验证）。
+
+| 平台 | 端点 | 鉴权方式 |
+|---|---|---|
+| GitHub | `GET https://api.github.com/repos/godotengine/godot/releases?per_page=1&page=1` | `Authorization: Bearer <token>` (provider headers) |
+| Codeberg | `GET https://codeberg.org/api/v1/repos/forgejo/forgejo/releases?limit=1&page=1` | `Authorization: token <token>` |
+| Gitee | `GET https://gitee.com/api/v5/repos/dromara/hutool/releases?per_page=1&page=1&access_token=<token>` | query param (`apply_token_to_url`) |
+
+`_on_pat_validate(key)` 走流程：`ProviderFactory.create_by_key(key)` → `provider.get_validate_url(token)` + `provider.get_api_headers(token)` → 用**每行一个独立**的 `HTTPRequest`（lazy create，存在 `row["validate_http"]`）发 GET → `request_completed` 用 `CONNECT_ONE_SHOT` + `bind(key)` 回到 `_on_pat_validate_response`。
+
+**为什么每行独立 HTTPRequest**：用户可能并行点多个平台的「检测」按钮；共享一个 HTTPRequest 会让前一个回调被 cancel 时 token 状态错乱。
+
+#### Device Flow 弹窗（GitHub）
+
+**早期的"行内 Device Flow 状态条 + code_row"已废弃**。点击 `BTN_DEVICE_FLOW_LOGIN` 走新流程：
+
+1. `_on_device_flow_login("github")`：
+   - 校验 `client_id` 非空（用 default）
+   - 调 `_close_device_dialog()` 清理上次残留
+   - `_build_device_flow_dialog()` 造 `AcceptDialog` 并 `add_child + popup_centered`
+   - `_settings_platform_rows["github"]["device_dialog"] = dialog`
+   - 「使用 GitHub 登录」按钮置灰
+   - `_set_device_dialog_status(REQUESTING)`，调 `_device_flow.start(client_id)`
+2. `_on_device_flow_code_received(user_code, uri, ...)`：
+   - 把 `user_code` 写进 dialog 内的大字 `Label`
+   - 把 `uri` 写进 dialog 内的 `LinkButton`
+   - 状态行 → `WAITING_USER`
+   - **自动**调一次 `OS.shell_open(uri)` —— 弹窗内还有手动「打开浏览器」按钮兜底
+3. dialog 内含「复制」按钮 → `DisplayServer.clipboard_set(user_code)` + `TOAST_USER_CODE_COPIED`
+4. 终态：
+   - `succeeded(token)` → `set_token` → `validation_state = UNKNOWN` → `_close_device_dialog()` → 「使用 GitHub 登录」恢复 → 刷新平台行（输入框立刻显示 `*****`）→ toast `TOAST_TOKEN_SAVED`
+   - `failed(err_key, _)` → `_close_device_dialog()` → 「使用 GitHub 登录」恢复 → toast `DEVICE_FLOW_STATUS_FAILED.format({err: tr(err_key)})`
+   - **关闭即取消**：`dialog.confirmed`（OK 按钮，文案改成 `BTN_DEVICE_FLOW_CANCEL`）和 `dialog.close_requested`（X / ESC）都接到 `_on_device_dialog_dismissed` → `_device_flow.cancel()`（幂等，对已结束的流程是 no-op）+ `_close_device_dialog()`
+
+**约束**：
+- 控件引用通过 `dialog.set_meta(...)` 挂在 dialog 自身上（`uri_link` / `code_label` / `copy_btn` / `open_btn` / `status_label`），生命周期跟随 dialog —— 不要塞回 `_settings_platform_rows["github"]`，避免 dialog `queue_free` 后 row 持有 dangling reference。
+- **禁止**用系统 `OS.alert` / 编辑器 `EditorInterface.popup_dialog` —— 必须是自建模态 AcceptDialog，否则关闭语义不可控。
+
+#### 多语言刷新契约
+
+设置 Tab 的所有 widget 都是动态构建的，`_apply_translations` 末尾必须调 `_retranslate_settings_tab()` 把分类按钮、PAT placeholder、Save/Clear/Validate、平台名 LinkButton 的 tooltip、Device Flow 登录按钮全部 retr。`_refresh_all_platform_rows()` 顺带通过 `_paint_status_icon` 刷状态图标的 tooltip。
+
+进行中 Device Flow 弹窗内文案**不**随语言切换 —— 文案在 `_build_device_flow_dialog` 一次性烘焙，弹窗存在期间不更新；用户运行时切语言机率极低，接受这个边缘。
+
+新增动态文本时**必须**：
+1. 在 `_build_*` 里 `tr(key)` 设初值
+2. 在创建后把控件引用塞进 `_settings_platform_rows[key]` 或同等持有点
+3. 在 `_retranslate_settings_tab` 加一行重 `tr` 该 key
+
+### Token 遮罩规则
+
+`TokenStore.mask_token(token)` 是**单点真相**：
+- `len = 0` → `""`
+- `1 ≤ len ≤ 8` → 全 `*`
+- `len ≥ 9` → 头 4 + 中段 `*`（最多 12 个）+ 尾 4
+
+`mask_token` 现仅用于日志/调试输出。**UI 上显示已配置不再依赖 mask** —— 改为把 token 原文直接放进 `LineEdit`，由 `secret = true` 渲染遮罩（Godot 内置渲染层处理）。这样三种平台（PAT、Device Flow OAuth token）行为完全一致，且用户清空输入框即知"未配置"。
+
+### Pre-check 流程
+
+`AddonManager._start_search(url)` 在调用真正的搜索之前先跑 token pre-check：
+
+1. 计算 `pre_with_release = _release_checkbox.button_pressed and _is_url_like(url)`
+2. 若为 true，调 `_ensure_token_for_release(url)`：
+   - 用 `ProviderFactory.detect_platform_key(url)` 拿到平台 key
+   - 查 `release_manager.get_token_store().has_token(platform)`
+   - 有 → return true，正常进入 `_start_search_unchecked(url)`
+   - 没有 → 弹 `ConfirmationDialog`（标题 `TOAST_TOKEN_MISSING_TITLE` / 正文 `TOAST_TOKEN_MISSING_BODY`），OK 按钮文案 `BTN_GO_SETTINGS`，OK → `_focus_settings_tab(platform)` 跳到设置 Tab 并高亮闪烁对应平台块。
+
+**重要**：pre-check 不再"配完自动重搜" — 用户配完后需手动回搜索栏再点搜索。原因：让用户在设置 Tab 看清自己确实存上了，而不是被打断式跳转。
+
+### `_focus_settings_tab(platform_key)` 行为
+
+1. `tab_container.current_tab = 2`
+2. `await get_tree().process_frame`（让 ScrollContainer 完成布局）
+3. `scroll.ensure_control_visible(outer_panel)`
+4. `Tween` 从 `Color(1.4, 1.4, 0.7)` 渐变回 `Color.WHITE`，0.8s — 黄色闪烁提示用户
+
+`_settings_flash_tween` 旧 tween 必须先 `kill()`，否则连续点击会叠加。
+
+### Device Flow 状态机
+
+`GitHubDeviceFlow` 的状态严格按规范走，`_running` 标志保护并发：
+
+```
+start(client_id) ─ POST /login/device/code ─→ _on_device_code_response
+                                              │
+                                              ├─ ok → emit code_received, Timer(_interval)
+                                              └─ err → emit failed
+_poll_token() ─ POST /login/oauth/access_token ─→ _on_token_response
+                                                  │
+                                                  ├─ access_token → emit succeeded
+                                                  ├─ authorization_pending → restart Timer
+                                                  ├─ slow_down → _interval += 5, restart Timer
+                                                  ├─ expired_token / access_denied → emit failed
+                                                  └─ other err → emit failed
+```
+
+`AddonManager` 把 Device Flow 信号映射到设置 Tab UI：
+
+| 信号 | 处理 |
+|---|---|
+| `code_received(user_code, verification_uri, _)` | 把 `user_code` / `uri` 填进 dialog 的 `code_label` / `uri_link`；状态 → `WAITING_USER`；自动 `OS.shell_open(uri)` |
+| `succeeded(token)` | `set_token("github", token)` → `validation_state = UNKNOWN` → `_close_device_dialog()` → 「使用 GitHub 登录」按钮 enable → `_refresh_platform_row("github")` 让输入框立刻显示 `*****` → toast `TOAST_TOKEN_SAVED` |
+| `failed(error_key, msg)` | `_close_device_dialog()` → 「使用 GitHub 登录」按钮 enable → toast `DEVICE_FLOW_STATUS_FAILED.format({err: tr(error_key)})` |
+
+**禁止**在 GDScript 主线程做 `time.sleep` 风格的轮询（会卡 UI），必须用 Timer + 信号。
+
+### i18n keys 命名约定
+
+- 设置 Tab 头部：`SETTINGS_HEADER_TOKENS` / `SETTINGS_DESC_TOKENS` / `SETTINGS_PATH_HINT`（含 `{path}` 占位符）
+- 设置分类：`SETTINGS_CATEGORY_AUTH`（新增分类时按 `SETTINGS_CATEGORY_<KEY>` 命名）
+- 平台名 link：`PLATFORM_LINK_TOOLTIP`
+- 平台行状态图标：`STATUS_VALIDATE_NONE` / `STATUS_VALIDATE_UNKNOWN` / `STATUS_VALIDATE_PENDING` / `STATUS_VALIDATE_OK` / `STATUS_VALIDATE_FAIL`，每个都有同前缀 `_TOOLTIP` 配套 key
+- 按钮：`BTN_SAVE` / `BTN_CLEAR` / `BTN_VALIDATE` / `BTN_COPY` / `BTN_DEVICE_FLOW_LOGIN` / `BTN_DEVICE_FLOW_CANCEL` / `BTN_OPEN_BROWSER` / `BTN_GO_SETTINGS`
+- Device Flow 弹窗：`DEVICE_FLOW_DLG_TITLE` / `DEVICE_FLOW_DLG_INSTRUCT`
+- Device Flow 弹窗内 status label：`DEVICE_FLOW_STATUS_REQUESTING` / `DEVICE_FLOW_STATUS_WAITING_USER` / `DEVICE_FLOW_STATUS_FAILED`（含 `{err}`）
+- Toast：`TOAST_TOKEN_SAVED` / `TOAST_TOKEN_CLEARED` / `TOAST_TOKEN_EMPTY` / `TOAST_TOKEN_VALIDATED` / `TOAST_TOKEN_INVALID`（含 `{code}`）/ `TOAST_USER_CODE_COPIED`
+- pre-check 弹窗：`TOAST_TOKEN_MISSING_TITLE` / `TOAST_TOKEN_MISSING_BODY`
+- 错误码：`ERR_TOKEN_*`（由 `GitHubDeviceFlow.failed` 信号携带 key 给 UI 做 `tr()`）；`ERR_TOKEN_VALIDATE_NETWORK` / `ERR_TOKEN_VALIDATE_HTTP`（含 `{code}`）由检测按钮使用
+- 日志：`LOG_TOKEN_MIGRATED` / `LOG_TOKEN_LOAD_FAILED` / `LOG_TOKEN_SAVE_FAILED`
+
+新增平台时：在 `TokenStore.PLATFORM_META` 加一项（含 `apply_url`、`auth_modes`） + 让 `ProviderFactory.create` 识别 URL 即可，UI 自动出新 PanelContainer。如果新平台支持 Device Flow，在 `auth_modes` 里加 `"device_flow"` 并填 `default_client_id` / `device_code_url` / `device_token_url`。

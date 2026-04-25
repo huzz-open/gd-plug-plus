@@ -1,3 +1,4 @@
+# gdlint:disable=max-public-methods
 class_name AddonData
 extends RefCounted
 
@@ -27,6 +28,7 @@ static func _default_data() -> Dictionary:
 # ---------------------------------------------------------------------------
 # Load / Save
 # ---------------------------------------------------------------------------
+
 
 func load_data() -> Error:
 	if not FileAccess.file_exists(ADDONS_JSON_PATH):
@@ -69,6 +71,7 @@ func save_data() -> Error:
 # Repo CRUD
 # ---------------------------------------------------------------------------
 
+
 func get_repos() -> Dictionary:
 	return _data.get("repos", {})
 
@@ -95,7 +98,10 @@ func remove_repo(repo_name: String) -> bool:
 
 ## Create a repo entry from search results.
 ## All plugins default to the given branch, installed = false.
-func add_repo_from_search(repo_name: String, url: String, found_addons: Array, default_branch: String = "") -> void:
+## For release-sourced addons, pass _from_release / _release_tag / _release_asset_url in dp.
+func add_repo_from_search(
+	repo_name: String, url: String, found_addons: Array, default_branch: String = ""
+) -> void:
 	var repo: Dictionary = {"url": url, "addons": []}
 	for dp in found_addons:
 		var addon: Dictionary = {
@@ -107,7 +113,13 @@ func add_repo_from_search(repo_name: String, url: String, found_addons: Array, d
 			"author": dp.get("author", ""),
 			"installed": false,
 		}
-		if not default_branch.is_empty():
+		if dp.get("_from_release", false):
+			addon["installed_from"] = "release"
+			addon["installed_tag"] = dp.get("_release_tag", "")
+			var asset_filename = dp.get("_release_asset_filename", "")
+			if not asset_filename.is_empty():
+				addon["installed_asset_filename"] = asset_filename
+		elif not default_branch.is_empty():
 			addon["branch"] = default_branch
 		repo["addons"].append(addon)
 	set_repo(repo_name, repo)
@@ -116,6 +128,7 @@ func add_repo_from_search(repo_name: String, url: String, found_addons: Array, d
 # ---------------------------------------------------------------------------
 # Plugin-level queries
 # ---------------------------------------------------------------------------
+
 
 func get_addons(repo_name: String) -> Array:
 	return get_repo(repo_name).get("addons", [])
@@ -155,6 +168,7 @@ func get_all_repos_for_ui() -> Array[Dictionary]:
 # Plugin-level mutations
 # ---------------------------------------------------------------------------
 
+
 func set_addon_installed(repo_name: String, addon_dir: String, installed: bool) -> void:
 	for p in get_addons(repo_name):
 		if p.get("addon_dir", "") == addon_dir:
@@ -162,7 +176,9 @@ func set_addon_installed(repo_name: String, addon_dir: String, installed: bool) 
 			return
 
 
-func set_addon_branch(repo_name: String, addon_dir: String, branch: String, commit: String = "") -> void:
+func set_addon_branch(
+	repo_name: String, addon_dir: String, branch: String, commit: String = ""
+) -> void:
 	for p in get_addons(repo_name):
 		if p.get("addon_dir", "") == addon_dir:
 			p["branch"] = branch
@@ -221,11 +237,62 @@ func is_repo_locked(repo_name: String) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Release-specific mutations
+# ---------------------------------------------------------------------------
+
+
+func set_addon_installed_from(repo_name: String, addon_dir: String, from: String) -> void:
+	for p in get_addons(repo_name):
+		if p.get("addon_dir", "") == addon_dir:
+			p["installed_from"] = from
+			return
+
+
+func set_addon_installed_tag(repo_name: String, addon_dir: String, tag: String) -> void:
+	for p in get_addons(repo_name):
+		if p.get("addon_dir", "") == addon_dir:
+			p["installed_tag"] = tag
+			return
+
+
+func set_addon_installed_asset(repo_name: String, addon_dir: String, filename: String) -> void:
+	for p in get_addons(repo_name):
+		if p.get("addon_dir", "") == addon_dir:
+			if filename.is_empty():
+				p.erase("installed_asset_filename")
+			else:
+				p["installed_asset_filename"] = filename
+			return
+
+
+func get_addon_installed_asset(repo_name: String, addon_dir: String) -> String:
+	for p in get_addons(repo_name):
+		if p.get("addon_dir", "") == addon_dir:
+			return p.get("installed_asset_filename", "")
+	return ""
+
+
+func get_release_asset_pattern(repo_name: String) -> String:
+	var repo = get_repo(repo_name)
+	return repo.get("release_asset_pattern", "")
+
+
+func get_repo_install_from(repo_name: String) -> String:
+	var installed = get_installed_addons(repo_name)
+	if installed.any(func(p): return p.get("installed_from", "") == "release"):
+		return "release"
+	return "source"
+
+
+# ---------------------------------------------------------------------------
 # Version mode helpers
 # ---------------------------------------------------------------------------
 
-## "branch" / "tag" / "commit" / "default"
+
+## "branch" / "tag" / "commit" / "release" / "default"
 static func get_version_mode(plugin: Dictionary) -> String:
+	if plugin.get("installed_from", "") == "release":
+		return "release"
 	if plugin.has("tag") and not plugin.get("tag", "").is_empty():
 		return "tag"
 	if plugin.has("branch") and not plugin.get("branch", "").is_empty():
@@ -237,7 +304,7 @@ static func get_version_mode(plugin: Dictionary) -> String:
 
 static func is_updatable(plugin: Dictionary) -> bool:
 	var mode = get_version_mode(plugin)
-	return mode == "branch" or mode == "default"
+	return mode == "branch" or mode == "default" or mode == "release"
 
 
 ## The ref string to pass to git checkout.
@@ -257,6 +324,8 @@ static func get_checkout_ref(plugin: Dictionary) -> String:
 static func get_version_label(plugin: Dictionary) -> String:
 	var mode = get_version_mode(plugin)
 	match mode:
+		"release":
+			return plugin.get("installed_tag", "")
 		"tag":
 			return plugin.get("tag", "")
 		"branch":
@@ -269,9 +338,15 @@ static func get_version_label(plugin: Dictionary) -> String:
 
 ## Build a grouping of plugins by checkout ref for batch installation.
 ## Returns { ref_string: [plugin_dict, ...] }
+## Release addons are grouped under "__release__".
 static func group_addons_by_version(addons: Array) -> Dictionary:
 	var groups: Dictionary = {}
 	for p in addons:
+		if p.get("installed_from", "") == "release":
+			if not groups.has("__release__"):
+				groups["__release__"] = []
+			groups["__release__"].append(p)
+			continue
 		var ref = get_checkout_ref(p)
 		if ref.is_empty():
 			ref = "__default__"
@@ -284,6 +359,7 @@ static func group_addons_by_version(addons: Array) -> Dictionary:
 # ---------------------------------------------------------------------------
 # Scan merge (after version change)
 # ---------------------------------------------------------------------------
+
 
 ## Merge freshly scanned addon data into existing repo entry.
 ## Preserves user settings (installed, branch/tag/commit).
@@ -338,6 +414,7 @@ func merge_scan_results(repo_name: String, scanned_addons: Array) -> Dictionary:
 # Conflict checking
 # ---------------------------------------------------------------------------
 
+
 ## Check which addon_dirs conflict with existing addons directories on disk.
 ## Returns Array of addon_dir strings that have conflicts.
 func check_dir_conflicts(addon_dirs: Array, existing_addon_names: PackedStringArray) -> Array:
@@ -363,6 +440,7 @@ func find_owner_repo(addon_dir: String) -> String:
 # Consistency check
 # ---------------------------------------------------------------------------
 
+
 ## Check filesystem vs addons.json consistency.
 ## Returns Array of {type, repo_name, addon_dir, message}.
 func check_consistency() -> Array[Dictionary]:
@@ -372,14 +450,26 @@ func check_consistency() -> Array[Dictionary]:
 	for repo_name in get_repos():
 		var repo = get_repo(repo_name)
 		var plug_dir = _GM.get_plugged_dir().path_join(repo_name)
+		var is_release_repo = get_repo_install_from(repo_name) == "release"
 
-		if not DirAccess.dir_exists_absolute(plug_dir):
-			issues.append({
-				"type": "missing_clone",
-				"repo_name": repo_name,
-				"addon_dir": "",
-				"message": TranslationServer.get_or_add_domain(_DOMAIN_NAME).translate("CONSISTENCY_MISSING_CLONE") % plug_dir,
-			})
+		if not is_release_repo and not DirAccess.dir_exists_absolute(plug_dir):
+			(
+				issues
+				. append(
+					{
+						"type": "missing_clone",
+						"repo_name": repo_name,
+						"addon_dir": "",
+						"message":
+						(
+							TranslationServer.get_or_add_domain(_DOMAIN_NAME).translate(
+								"CONSISTENCY_MISSING_CLONE"
+							)
+							% plug_dir
+						),
+					}
+				)
+			)
 
 		for p in repo.get("addons", []):
 			if not p.get("installed", false):
@@ -389,12 +479,23 @@ func check_consistency() -> Array[Dictionary]:
 			var full_path = "res://" + ipath
 			var global_path = ProjectSettings.globalize_path(full_path)
 			if not DirAccess.dir_exists_absolute(global_path):
-				issues.append({
-					"type": "missing_installed",
-					"repo_name": repo_name,
-					"addon_dir": p.get("addon_dir", ""),
-					"message": TranslationServer.get_or_add_domain(_DOMAIN_NAME).translate("CONSISTENCY_MISSING_INSTALLED") % full_path,
-				})
+				(
+					issues
+					. append(
+						{
+							"type": "missing_installed",
+							"repo_name": repo_name,
+							"addon_dir": p.get("addon_dir", ""),
+							"message":
+							(
+								TranslationServer.get_or_add_domain(_DOMAIN_NAME).translate(
+									"CONSISTENCY_MISSING_INSTALLED"
+								)
+								% full_path
+							),
+						}
+					)
+				)
 
 	var addons_path = ProjectSettings.globalize_path("res://addons")
 	if DirAccess.dir_exists_absolute(addons_path):
@@ -406,12 +507,23 @@ func check_consistency() -> Array[Dictionary]:
 				if dir.current_is_dir() and fname != "gd-plug-plus":
 					var addon_dir = "addons/" + fname
 					if not tracked_dirs.has(addon_dir):
-						issues.append({
-							"type": "untracked",
-							"repo_name": "",
-							"addon_dir": addon_dir,
-							"message": TranslationServer.get_or_add_domain(_DOMAIN_NAME).translate("CONSISTENCY_UNTRACKED") % addon_dir,
-						})
+						(
+							issues
+							. append(
+								{
+									"type": "untracked",
+									"repo_name": "",
+									"addon_dir": addon_dir,
+									"message":
+									(
+										TranslationServer.get_or_add_domain(_DOMAIN_NAME).translate(
+											"CONSISTENCY_UNTRACKED"
+										)
+										% addon_dir
+									),
+								}
+							)
+						)
 				fname = dir.get_next()
 			dir.list_dir_end()
 
@@ -421,6 +533,7 @@ func check_consistency() -> Array[Dictionary]:
 # ---------------------------------------------------------------------------
 # Migration from legacy plug.gd + index.cfg
 # ---------------------------------------------------------------------------
+
 
 ## Migrate from gd-plug's plug.gd + index.cfg to addons.json.
 ## plugged_plugins: gd_plug._plugged_plugins (from running _plugging())
@@ -516,7 +629,10 @@ func migrate_from_legacy(plugged_plugins: Dictionary, installed_plugins: Diction
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 static func _normalize_type(raw_type: String) -> String:
+	if raw_type.is_empty():
+		return ""
 	match raw_type:
 		"editor_plugin":
 			return "plugin"

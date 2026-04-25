@@ -9,6 +9,11 @@ const ERR_CANCELLED = -99
 const GIT_TIMEOUT_ARGS: Array = ["-c", "http.lowSpeedLimit=100", "-c", "http.lowSpeedTime=60"]
 const _DOMAIN_NAME = "gd-plug-plus"
 
+static var _cancel_requested: bool = false
+static var _active_pid: int = -1
+static var _cancel_semaphore: Semaphore = null
+static var last_error: String = ""
+
 
 static func get_plugged_dir() -> String:
 	var base = OS.get_temp_dir().path_join("gd-plug-plus").path_join("repos")
@@ -16,13 +21,9 @@ static func get_plugged_dir() -> String:
 		DirAccess.make_dir_recursive_absolute(base)
 	return base
 
+
 static func _tr(key: String) -> String:
 	return TranslationServer.get_or_add_domain(_DOMAIN_NAME).translate(key)
-
-static var _cancel_requested: bool = false
-static var _active_pid: int = -1
-static var _cancel_semaphore: Semaphore = null
-static var last_error: String = ""
 
 
 static func request_cancel():
@@ -51,6 +52,7 @@ static func git(repo_dir: String, args: Array, output: Array = []) -> int:
 # Cancellable process execution
 # ---------------------------------------------------------------------------
 
+
 ## Run git with cancel support. Uses Thread + Semaphore (wait/notify) so the
 ## calling thread blocks without polling. On cancel, request_cancel() kills the
 ## process and posts the semaphore to wake the caller immediately.
@@ -68,7 +70,9 @@ static func _execute_cancellable(args: Array, read_stderr: bool = true) -> Dicti
 
 	_cleanup_tmp_files([tmp_out, tmp_rc])
 
-	var redirect = "2>&1" if read_stderr else ("2>nul" if OS.get_name() == "Windows" else "2>/dev/null")
+	var redirect = (
+		"2>&1" if read_stderr else ("2>nul" if OS.get_name() == "Windows" else "2>/dev/null")
+	)
 
 	match OS.get_name():
 		"Windows":
@@ -78,7 +82,10 @@ static func _execute_cancellable(args: Array, read_stderr: bool = true) -> Dicti
 				git_line += ' "' + a.replace('"', '""') + '"'
 			var bat_out = tmp_out.replace("/", "\\")
 			var bat_rc = tmp_rc.replace("/", "\\")
-			var script = '@echo off\r\n%s %s > "%s"\r\necho %%ERRORLEVEL%% > "%s"\r\n' % [git_line, redirect, bat_out, bat_rc]
+			var script = (
+				'@echo off\r\n%s %s > "%s"\r\necho %%ERRORLEVEL%% > "%s"\r\n'
+				% [git_line, redirect, bat_out, bat_rc]
+			)
 			var f = FileAccess.open(tmp_bat, FileAccess.WRITE)
 			if f == null:
 				return result
@@ -141,7 +148,9 @@ static func _kill_process_tree(pid: int):
 		"Windows":
 			OS.create_process("cmd", ["/C", "taskkill /F /T /PID %d 2>nul" % pid])
 		_:
-			OS.create_process("bash", ["-c", "pkill -9 -P %d 2>/dev/null; kill -9 %d 2>/dev/null" % [pid, pid]])
+			OS.create_process(
+				"bash", ["-c", "pkill -9 -P %d 2>/dev/null; kill -9 %d 2>/dev/null" % [pid, pid]]
+			)
 
 
 static func _cleanup_tmp_files(paths: Array):
@@ -156,6 +165,7 @@ static func _cleanup_tmp_files(paths: Array):
 # ---------------------------------------------------------------------------
 # Remote queries (no clone needed)
 # ---------------------------------------------------------------------------
+
 
 ## Returns {default_branch, branches, tags, ref_commits}.
 ## On cancel: includes "cancelled": true. On error: includes "error": String.
@@ -240,13 +250,19 @@ static func ls_remote(url: String) -> Dictionary:
 		result["tags"] = tags
 		result["ref_commits"] = ref_commits
 
-	PlugLogger.debug("ls-remote: default_branch=%s, %d branches, %d tags" % [result["default_branch"], result["branches"].size(), result["tags"].size()])
+	PlugLogger.debug(
+		(
+			"ls-remote: default_branch=%s, %d branches, %d tags"
+			% [result["default_branch"], result["branches"].size(), result["tags"].size()]
+		)
+	)
 	return result
 
 
 # ---------------------------------------------------------------------------
 # Local repo queries (need a cloned repo)
 # ---------------------------------------------------------------------------
+
 
 ## Get branches, tags and ref_commits from local repo (no network).
 ## Returns same structure as ls_remote: {default_branch, branches, tags, ref_commits}
@@ -281,7 +297,11 @@ static func get_local_refs(repo_dir: String) -> Dictionary:
 
 	var branches: PackedStringArray = []
 	var ref_commits: Dictionary = {}
-	git(repo_dir, ["for-each-ref", "--format=%(objectname:short)\t%(refname:short)", "refs/remotes/origin/"], output)
+	git(
+		repo_dir,
+		["for-each-ref", "--format=%(objectname:short)\t%(refname:short)", "refs/remotes/origin/"],
+		output
+	)
 	if output.size() > 0:
 		for line in output[0].split("\n"):
 			line = line.strip_edges()
@@ -298,7 +318,16 @@ static func get_local_refs(repo_dir: String) -> Dictionary:
 	output.clear()
 
 	var tags: PackedStringArray = []
-	git(repo_dir, ["for-each-ref", "--format=%(objectname:short)\t%(refname:short)", "--sort=-creatordate", "refs/tags/"], output)
+	git(
+		repo_dir,
+		[
+			"for-each-ref",
+			"--format=%(objectname:short)\t%(refname:short)",
+			"--sort=-creatordate",
+			"refs/tags/"
+		],
+		output
+	)
 	if output.size() > 0:
 		for line in output[0].split("\n"):
 			line = line.strip_edges()
@@ -314,7 +343,12 @@ static func get_local_refs(repo_dir: String) -> Dictionary:
 	result["branches"] = branches
 	result["tags"] = tags
 	result["ref_commits"] = ref_commits
-	PlugLogger.debug("get_local_refs: default=%s, %d branches, %d tags" % [result["default_branch"], branches.size(), tags.size()])
+	PlugLogger.debug(
+		(
+			"get_local_refs: default=%s, %d branches, %d tags"
+			% [result["default_branch"], branches.size(), tags.size()]
+		)
+	)
 	return result
 
 
@@ -362,7 +396,9 @@ static func get_current_info(repo_dir: String) -> Dictionary:
 
 
 ## Returns [{hash, hash_short, message, date}, ...]
-static func get_commit_log(repo_dir: String, ref: String = "HEAD", count: int = 50) -> Array[Dictionary]:
+static func get_commit_log(
+	repo_dir: String, ref: String = "HEAD", count: int = 50
+) -> Array[Dictionary]:
 	var commits: Array[Dictionary] = []
 	if not DirAccess.dir_exists_absolute(repo_dir + "/.git"):
 		return commits
@@ -378,12 +414,17 @@ static func get_commit_log(repo_dir: String, ref: String = "HEAD", count: int = 
 			var parts = line.split("\t")
 			if parts.size() < 4:
 				continue
-			commits.append({
-				"hash": parts[0],
-				"hash_short": parts[1],
-				"message": parts[2],
-				"date": _format_date(parts[3]),
-			})
+			(
+				commits
+				. append(
+					{
+						"hash": parts[0],
+						"hash_short": parts[1],
+						"message": parts[2],
+						"date": _format_date(parts[3]),
+					}
+				)
+			)
 	return commits
 
 
@@ -459,6 +500,7 @@ static func fetch_and_compare(repo_dir: String, branch: String = "") -> Dictiona
 # ---------------------------------------------------------------------------
 # Clone / checkout / fetch operations
 # ---------------------------------------------------------------------------
+
 
 static func shallow_clone(url: String, dest: String, branch: String = "") -> int:
 	last_error = ""
@@ -544,26 +586,69 @@ static func _copy_dir_recursive(from: String, to: String) -> int:
 
 
 ## Delete an installed plugin directory from the project.
+## Safety: refuses to delete project root or anything outside addons/.
 static func delete_installed_dir(addon_dir_relative: String) -> void:
+	if addon_dir_relative.strip_edges().is_empty():
+		PlugLogger.debug("delete_installed_dir: refused — addon_dir is empty")
+		return
+	if not addon_dir_relative.begins_with("addons/"):
+		PlugLogger.debug(
+			"delete_installed_dir: refused — not under addons/: %s"
+			% addon_dir_relative
+		)
+		return
 	var full = ProjectSettings.globalize_path("res://" + addon_dir_relative)
 	if DirAccess.dir_exists_absolute(full):
 		delete_directory(full)
 
 
 static func delete_directory(path: String) -> void:
-	PlugLogger.debug("delete_directory: %s" % path)
+	var clean := path.strip_edges()
+	if clean.is_empty():
+		PlugLogger.debug("delete_directory: refused — empty path")
+		return
+	var project_root := ProjectSettings.globalize_path("res://")
+	if _is_path_equal_or_parent(clean, project_root):
+		PlugLogger.debug(
+			"delete_directory: REFUSED — would delete project root "
+			+ "or ancestor: %s" % clean
+		)
+		return
+	var home := OS.get_environment("HOME")
+	if home.is_empty():
+		home = OS.get_environment("USERPROFILE")
+	if not home.is_empty() and _is_path_equal_or_parent(clean, home):
+		PlugLogger.debug(
+			"delete_directory: REFUSED — would delete home dir "
+			+ "or ancestor: %s" % clean
+		)
+		return
+	PlugLogger.debug("delete_directory: %s" % clean)
 	match OS.get_name():
 		"Windows":
-			var win_path = path.replace("/", "\\")
-			OS.execute("cmd", ["/C", 'rd /s /q "%s" 2>nul' % win_path])
+			var win_path = clean.replace("/", "\\")
+			OS.execute(
+				"cmd", ["/C", 'rd /s /q "%s" 2>nul' % win_path]
+			)
 		_:
-			OS.execute("bash", ["-c", "rm -rf '%s'" % path])
-	PlugLogger.debug("delete_directory done: %s" % path)
+			OS.execute("bash", ["-c", "rm -rf '%s'" % clean])
+	PlugLogger.debug("delete_directory done: %s" % clean)
+
+
+static func _is_path_equal_or_parent(
+	candidate: String, protected: String
+) -> bool:
+	var c := candidate.replace("\\", "/").trim_suffix("/")
+	var p := protected.replace("\\", "/").trim_suffix("/")
+	if c.is_empty() or p.is_empty():
+		return false
+	return p == c or p.begins_with(c + "/")
 
 
 # ---------------------------------------------------------------------------
 # Addon scanning
 # ---------------------------------------------------------------------------
+
 
 ## Scan all Godot plugins and GDExtensions in a checked-out repo directory.
 ## Reuses scan_local_addons which mirrors Godot engine's own scanning logic.
@@ -623,7 +708,9 @@ static func _should_skip_directory(dir_path: String, dir_name: String) -> bool:
 	return false
 
 
-static func _scan_dir_for_addons(base_dir: String, current_dir: String, results: Array[Dictionary]) -> void:
+static func _scan_dir_for_addons(
+	base_dir: String, current_dir: String, results: Array[Dictionary]
+) -> void:
 	var dir = DirAccess.open(current_dir)
 	if dir == null:
 		return
@@ -642,31 +729,46 @@ static func _scan_dir_for_addons(base_dir: String, current_dir: String, results:
 			if cfg.load(full_path) == OK:
 				var rel_dir = current_dir.replace(base_dir, "").trim_prefix("/")
 				var cfg_rel = rel_dir + "/" + file_name if not rel_dir.is_empty() else file_name
-				results.append({
-					"name": cfg.get_value("plugin", "name", rel_dir.get_file()),
-					"description": cfg.get_value("plugin", "description", ""),
-					"author": cfg.get_value("plugin", "author", ""),
-					"version": cfg.get_value("plugin", "version", ""),
-					"script": cfg.get_value("plugin", "script", ""),
-					"type": "editor_plugin",
-					"cfg_path": cfg_rel,
-					"addon_dir": rel_dir if not rel_dir.is_empty() else ".",
-					"structure": _classify_structure(cfg_rel),
-				})
+				var script_file: String = cfg.get_value("plugin", "script", "")
+				var language := "gdscript"
+				if script_file.get_extension() == "cs":
+					language = "csharp"
+				(
+					results
+					. append(
+						{
+							"name": cfg.get_value("plugin", "name", rel_dir.get_file()),
+							"description": cfg.get_value("plugin", "description", ""),
+							"author": cfg.get_value("plugin", "author", ""),
+							"version": cfg.get_value("plugin", "version", ""),
+							"script": script_file,
+							"type": "editor_plugin",
+							"language": language,
+							"cfg_path": cfg_rel,
+							"addon_dir": rel_dir if not rel_dir.is_empty() else ".",
+							"structure": _classify_structure(cfg_rel),
+						}
+					)
+				)
 		elif file_name.get_extension() == "gdextension":
 			var rel_dir = current_dir.replace(base_dir, "").trim_prefix("/")
 			var ext_rel = rel_dir + "/" + file_name if not rel_dir.is_empty() else file_name
-			results.append({
-				"name": file_name.get_basename(),
-				"description": "GDExtension",
-				"author": "",
-				"version": "",
-				"script": "",
-				"type": "gdextension",
-				"cfg_path": ext_rel,
-				"addon_dir": rel_dir if not rel_dir.is_empty() else ".",
-				"structure": _classify_structure(ext_rel),
-			})
+			(
+				results
+				. append(
+					{
+						"name": file_name.get_basename(),
+						"description": "GDExtension",
+						"author": "",
+						"version": "",
+						"script": "",
+						"type": "gdextension",
+						"cfg_path": ext_rel,
+						"addon_dir": rel_dir if not rel_dir.is_empty() else ".",
+						"structure": _classify_structure(ext_rel),
+					}
+				)
+			)
 		file_name = dir.get_next()
 	dir.list_dir_end()
 
@@ -674,6 +776,7 @@ static func _scan_dir_for_addons(base_dir: String, current_dir: String, results:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 static func repo_name_from_url(repo: String) -> String:
 	var s = repo.strip_edges().trim_suffix("/")
@@ -688,7 +791,7 @@ static func repo_name_from_url(repo: String) -> String:
 
 
 static func _format_date(raw: String) -> String:
-	raw = raw.strip_edges().replace('"', '')
+	raw = raw.strip_edges().replace('"', "")
 	if raw.length() >= 19:
 		return raw.left(19).replace("T", " ")
 	return raw

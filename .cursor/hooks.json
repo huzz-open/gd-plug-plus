@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "python .cursor/hooks/gdlint-track.py",
+        "matcher": "Write",
+        "timeout": 5
+      }
+    ],
+    "stop": [
+      {
+        "command": "python .cursor/hooks/gdlint-check.py",
+        "timeout": 30,
+        "loop_limit": 1
+      }
+    ]
+  }
+}

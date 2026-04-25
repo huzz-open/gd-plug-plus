@@ -9,6 +9,17 @@ signal item_selected(metadata: Dictionary)
 
 const _DOMAIN_NAME = "gd-plug-plus"
 
+var _filter: LineEdit
+var _tree: Tree
+var _loading_box: CenterContainer
+var _loading_label: Label
+var _loading_spinner: TextureRect
+var _error_label: Label
+
+var _columns: int = 1
+var _all_groups: Array = []
+
+
 static func _tr(key: String) -> String:
 	return TranslationServer.get_or_add_domain(_DOMAIN_NAME).translate(key)
 
@@ -22,20 +33,13 @@ static func _get_editor_scale() -> float:
 static func _scaled(value: float) -> int:
 	return int(value * _get_editor_scale())
 
-var _filter: LineEdit
-var _tree: Tree
-var _loading_box: CenterContainer
-var _loading_label: Label
-var _loading_spinner: TextureRect
-var _error_label: Label
-
-var _columns: int = 1
-var _all_groups: Array = []
-
 
 func _init():
 	ok_button_text = _tr("BTN_CLOSE")
-	min_size = Vector2i(_scaled(PlugUIConstants.SELECTOR_DEFAULT_SIZE.x), _scaled(PlugUIConstants.SELECTOR_DEFAULT_SIZE.y))
+	min_size = Vector2i(
+		_scaled(PlugUIConstants.SELECTOR_DEFAULT_SIZE.x),
+		_scaled(PlugUIConstants.SELECTOR_DEFAULT_SIZE.y)
+	)
 
 
 func _ready():
@@ -70,7 +74,9 @@ func _ready():
 		_loading_spinner.texture = load(spinner_path)
 		_loading_spinner.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		_loading_spinner.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		_loading_spinner.custom_minimum_size = Vector2(_scaled(PlugUIConstants.SPINNER_SIZE), _scaled(PlugUIConstants.SPINNER_SIZE))
+		_loading_spinner.custom_minimum_size = Vector2(
+			_scaled(PlugUIConstants.SPINNER_SIZE), _scaled(PlugUIConstants.SPINNER_SIZE)
+		)
 		lhbox.add_child(_loading_spinner)
 
 	_loading_label = Label.new()
@@ -100,9 +106,16 @@ func _process(delta: float):
 # Public API
 # ---------------------------------------------------------------------------
 
+
 func setup(config: Dictionary) -> void:
 	title = config.get("title", "")
-	var sz: Vector2i = config.get("size", Vector2i(_scaled(PlugUIConstants.SELECTOR_DEFAULT_SIZE.x), _scaled(PlugUIConstants.SELECTOR_DEFAULT_SIZE.y)))
+	var sz: Vector2i = config.get(
+		"size",
+		Vector2i(
+			_scaled(PlugUIConstants.SELECTOR_DEFAULT_SIZE.x),
+			_scaled(PlugUIConstants.SELECTOR_DEFAULT_SIZE.y)
+		)
+	)
 	min_size = sz
 	size = sz
 
@@ -151,6 +164,7 @@ func show_error(error_text: String) -> void:
 # ---------------------------------------------------------------------------
 # Internal
 # ---------------------------------------------------------------------------
+
 
 func _show_tree() -> void:
 	_loading_box.visible = false

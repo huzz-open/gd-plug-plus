@@ -7,10 +7,12 @@ Godot 4.x 插件管理器，内置编辑器 UI。在编辑器内完成插件的�
 ## 功能
 
 - **浏览与安装** — 从社区插件目录发现插件，或通过 Git URL 搜索
+- **Release 安装** — 直接从 GitHub / Codeberg / Gitee Releases 安装扩展（GDExtension、预编译二进制文件等）
 - **插件级版本控制** — 每个插件可独立锁定到分支、标签或指定 commit
 - **一键更新** — 批量或逐个检查并应用更新
 - **多插件仓库** — 自动检测仓库内的多个插件，独立管理
 - **冲突检测** — 目录已存在时弹出提示，支持覆盖或取消
+- **API Token 管理** — 配置平台令牌（PAT 或 GitHub Device Flow OAuth），一次配置全局共享
 - **自更新** — gd-plug-plus 通过自身 UI 跟踪和更新自己
 - **旧版迁移** — 自动导入已有的 `plug.gd` + `index.cfg` 配置
 
@@ -31,6 +33,35 @@ Godot 4.x 插件管理器，内置编辑器 UI。在编辑器内完成插件的�
 4. **已安装** 选项卡 → 检查版本、更新、切换分支或卸载
 
 所有状态存储在 `addons.json` 中，无需 `plug.gd` 文件。
+
+### 从 Release 安装
+
+部分扩展（尤其是 GDExtension）以预编译二进制的形式通过 GitHub Releases 发布，而非以源码形式存在于仓库目录中。
+
+1. 输入仓库 URL，搜索前勾选 **搜索 Release** 复选框
+2. gd-plug-plus 会查询平台 Release API，自动匹配压缩包资产（`.zip`、`.tar.gz` 等），与源码搜索结果一起展示
+3. 选择目标 Release 资产，点击 **安装选中** — 资产将被下载、解压并复制到项目中
+4. 已安装的 Release 扩展在分支/标签列会标记 `[R]`，支持原地切换到其他 Release 标签
+
+> 如果未配置平台令牌，gd-plug-plus 会在 Release 搜索前提示你进行配置（参见下方 [Token 配置](#token-配置)）。
+
+### Token 配置
+
+Release 搜索和下载需要平台 API 令牌（避免速率限制，同时支持访问私有仓库）。令牌存储在**项目外部的加密文件**中，同一台机器上的所有 Godot 项目共享。
+
+**设置选项卡 → 认证** 提供各平台的令牌管理：
+
+| 平台 | 认证方式 | 获取方式 |
+|---|---|---|
+| GitHub | Device Flow OAuth / PAT | [github.com/settings/tokens](https://github.com/settings/tokens) |
+| Codeberg | PAT | [codeberg.org/user/settings/applications](https://codeberg.org/user/settings/applications) |
+| Gitee | PAT | [gitee.com/profile/personal_access_tokens](https://gitee.com/profile/personal_access_tokens) |
+
+- **Device Flow**（仅 GitHub）：点击"Device Flow 登录"，界面显示一组验证码 — 打开浏览器链接、输入验证码、授权后令牌自动保存。
+- **PAT**（所有平台）：将 Personal Access Token 粘贴到输入框并点击保存。
+- **验证**：通过 API 调用检测令牌是否仍然有效。
+
+令牌文件位置：`~/.config/gd-plug-plus/tokens.dat`（Linux/macOS）或 `%APPDATA%/gd-plug-plus/tokens.dat`（Windows）。
 
 ## 工作原理
 
@@ -98,6 +129,34 @@ gd-plug-plus 在首次运行时将自身注册到 `addons.json`。更新机制�
 | `addons[].type` | 否 | `plugin`（默认）或 `gdextension` |
 
 多插件仓库中，每个插件作为 `addons` 数组中的独立元素列出。
+
+## GDScript 代码检查
+
+本项目使用 [gdtoolkit](https://github.com/Scony/godot-gdscript-toolkit)（`gdlint`）对 GDScript 代码进行静态分析。
+
+### 安装
+
+```bash
+pip3 install "gdtoolkit==4.*"
+```
+
+### 手动检查
+
+检查单个文件：
+
+```bash
+gdlint addons/gd-plug-plus/plugin.gd
+```
+
+检查项目中所有 `.gd` 文件：
+
+```bash
+gdlint addons/gd-plug-plus/
+```
+
+### Cursor Hook（自动检查）
+
+`.cursor/hooks.json` 中配置了 Cursor Hook。每次编辑 `.gd` 文件后，`gdlint` 会自动运行并将问题反馈到 agent 上下文中，无需手动操作。
 
 ## 致谢
 

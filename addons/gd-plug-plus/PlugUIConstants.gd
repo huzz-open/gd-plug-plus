@@ -1,22 +1,20 @@
 class_name PlugUIConstants
 
-
 # ===========================================================================
 # 1. Theme Colors
 # 用于 Tree 行文本着色，表示各种状态。改变颜色会影响整体视觉风格。
 # ===========================================================================
 
-const COLOR_UNKNOWN    = Color(0.6, 0.6, 0.6)   ## 未知状态 — 灰色
-const COLOR_CHECKING   = Color(0.9, 0.8, 0.2)   ## 正在检查 / 待确认变更 — 黄色
+const COLOR_UNKNOWN = Color(0.6, 0.6, 0.6)  ## 未知状态 — 灰色
+const COLOR_CHECKING = Color(0.9, 0.8, 0.2)  ## 正在检查 / 待确认变更 — 黄色
 const COLOR_UP_TO_DATE = Color(0.3, 0.85, 0.4)  ## 已是最新 — 绿色
-const COLOR_BEHIND     = Color(0.95, 0.3, 0.3)  ## 有新版本可更新 / 错误 — 红色
-const COLOR_UPDATING   = Color(0.9, 0.7, 0.1)   ## 正在更新中 — 橙黄
-const COLOR_UPDATED    = Color(0.4, 0.7, 1.0)   ## 已更新 / 当前分支 — 蓝色
-const COLOR_ACTION     = Color(0.82, 0.82, 0.82) ## 可点击操作文本 — 浅灰
-const COLOR_COMMIT     = Color(0.9, 0.5, 0.5)   ## commit hash 显示色
-const COLOR_URL        = Color(0.65, 0.65, 0.65) ## URL / 描述文本 — 暗灰
-const COLOR_CONFLICT   = Color(0.95, 0.3, 0.3)  ## 目录冲突警告 — 红色(同 BEHIND)
-
+const COLOR_BEHIND = Color(0.95, 0.3, 0.3)  ## 有新版本可更新 / 错误 — 红色
+const COLOR_UPDATING = Color(0.9, 0.7, 0.1)  ## 正在更新中 — 橙黄
+const COLOR_UPDATED = Color(0.4, 0.7, 1.0)  ## 已更新 / 当前分支 — 蓝色
+const COLOR_ACTION = Color(0.82, 0.82, 0.82)  ## 可点击操作文本 — 浅灰
+const COLOR_COMMIT = Color(0.9, 0.5, 0.5)  ## commit hash 显示色
+const COLOR_URL = Color(0.65, 0.65, 0.65)  ## URL / 描述文本 — 暗灰
+const COLOR_CONFLICT = Color(0.95, 0.3, 0.3)  ## 目录冲突警告 — 红色(同 BEHIND)
 
 # ===========================================================================
 # 2. Installed Tree 列布局
@@ -26,8 +24,9 @@ const COLOR_CONFLICT   = Color(0.95, 0.3, 0.3)  ## 目录冲突警告 — 红色
 # ===========================================================================
 
 const INSTALLED_COL_WIDTHS: Array[int] = [40, 100, 70, 100, 80, 190, 50, 50, 60, 50]
-const INSTALLED_COL_EXPAND: Array[bool] = [true, true, false, false, false, false, false, false, false, false]
-
+const INSTALLED_COL_EXPAND: Array[bool] = [
+	true, true, false, false, false, false, false, false, false, false
+]
 
 # ===========================================================================
 # 3. Search Tree 列布局
@@ -40,7 +39,6 @@ const SEARCH_COL_EXPAND: Array[bool] = [false, false, true, false, false, false,
 
 ## 搜索结果 Tree 控件的最小高度(px)。值越大，搜索区域在面板中占比越大。
 const SEARCH_TREE_MIN_HEIGHT = 150
-
 
 # ===========================================================================
 # 4. Console 控制台面板
@@ -55,7 +53,6 @@ const CONSOLE_EXPANDED_HEIGHT = 180
 
 ## 控制台日志字体大小(px)。
 const CONSOLE_FONT_SIZE = 12
-
 
 # ===========================================================================
 # 5. Dialog 对话框尺寸
@@ -83,7 +80,6 @@ const TOAST_MIN_WIDTH = 360
 ## SelectorPopup 的默认尺寸
 const SELECTOR_DEFAULT_SIZE = Vector2i(360, 400)
 
-
 # ===========================================================================
 # 6. Spacing 间距与边距
 # 控制 UI 元素之间的留白。值越大空间感越强，但可用面积越小。
@@ -110,7 +106,6 @@ const DETAIL_H_SEPARATION = 16
 ## 详情对话框网格垂直间距(px) — 行与行之间的纵向间隔
 const DETAIL_V_SEPARATION = 8
 
-
 # ===========================================================================
 # 7. Misc UI 杂项 UI 元素
 # ===========================================================================
@@ -124,14 +119,12 @@ const SPINNER_SIZE = 20
 ## SelectorPopup 中 Tree 控件的最小高度(px)
 const SELECTOR_TREE_MIN_HEIGHT = 280
 
-
 # ===========================================================================
 # 8. Animation 动画参数
 # ===========================================================================
 
 ## 加载 spinner 旋转速度，乘以 TAU 得到弧度/秒。值越大转越快。
 const SPINNER_SPEED = 0.8
-
 
 # ===========================================================================
 # 9. Git 参数
