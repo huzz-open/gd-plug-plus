@@ -34,11 +34,17 @@ var _running: bool = false
 
 func _ready() -> void:
 	_http = HTTPRequest.new()
+	ProxyConfig.apply_to_http(_http)
 	add_child(_http)
 	_poll_timer = Timer.new()
 	_poll_timer.one_shot = true
 	_poll_timer.timeout.connect(_poll_token)
 	add_child(_poll_timer)
+
+
+func apply_proxy() -> void:
+	if _http:
+		ProxyConfig.apply_to_http(_http)
 
 
 ## Kick off Device Flow with the given OAuth Client ID. Subsequent state moves

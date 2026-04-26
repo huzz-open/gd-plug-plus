@@ -26,6 +26,7 @@ var _downloading: bool = false
 func _ready():
 	_http = HTTPRequest.new()
 	_http.download_chunk_size = 65536
+	ProxyConfig.apply_to_http(_http)
 	add_child(_http)
 	_token_store.load_tokens()
 
@@ -210,6 +211,10 @@ func cancel() -> void:
 	_http.cancel_request()
 	_current_op = null
 	_current_provider = null
+
+
+func apply_proxy() -> void:
+	ProxyConfig.apply_to_http(_http)
 
 
 # ---------------------------------------------------------------------------

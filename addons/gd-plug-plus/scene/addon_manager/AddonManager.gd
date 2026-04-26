@@ -130,6 +130,9 @@ var _cache_repo_path_label: Label
 var _cache_release_path_label: Label
 var _cache_clear_repo_btn: Button
 var _cache_clear_release_btn: Button
+var _proxy_enable_cb: CheckBox
+var _proxy_host_input: LineEdit
+var _proxy_port_spin: SpinBox
 var _console_header_height: int = PlugUIConstants.CONSOLE_HEADER_HEIGHT
 var _console_expanded_height: int = PlugUIConstants.CONSOLE_EXPANDED_HEIGHT
 
@@ -3844,6 +3847,11 @@ func _setup_settings_tab():
 	var auth_panel := _build_auth_category_panel(margin)
 	content_vbox.add_child(auth_panel)
 	_register_settings_category("auth", sidebar_vbox, "SETTINGS_CATEGORY_AUTH", auth_panel)
+	var network_panel := _build_network_category_panel()
+	content_vbox.add_child(network_panel)
+	_register_settings_category(
+		"network", sidebar_vbox, "SETTINGS_CATEGORY_NETWORK", network_panel
+	)
 	var cache_panel := _build_cache_category_panel()
 	content_vbox.add_child(cache_panel)
 	_register_settings_category(
@@ -3925,6 +3933,92 @@ func _build_auth_category_panel(_margin: int) -> Control:
 		page.add_child(outer)
 		_settings_platform_panels[key] = outer
 	return page
+
+
+func _build_network_category_panel() -> Control:
+	var page = VBoxContainer.new()
+	page.add_theme_constant_override(
+		"separation", _scaled(PlugUIConstants.SEPARATION_LARGE)
+	)
+	page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var outer = MarginContainer.new()
+	var panel = PanelContainer.new()
+	outer.add_child(panel)
+	var inner = MarginContainer.new()
+	var pad := _scaled(8)
+	inner.add_theme_constant_override("margin_left", pad)
+	inner.add_theme_constant_override("margin_right", pad)
+	inner.add_theme_constant_override("margin_top", pad)
+	inner.add_theme_constant_override("margin_bottom", pad)
+	panel.add_child(inner)
+
+	var vbox = VBoxContainer.new()
+	vbox.add_theme_constant_override(
+		"separation", _scaled(PlugUIConstants.SEPARATION_STANDARD)
+	)
+
+	_proxy_enable_cb = CheckBox.new()
+	_proxy_enable_cb.text = tr("SETTINGS_PROXY_ENABLE")
+	vbox.add_child(_proxy_enable_cb)
+
+	var addr_hbox = HBoxContainer.new()
+	addr_hbox.add_theme_constant_override("separation", _scaled(4))
+	var host_label = Label.new()
+	host_label.text = tr("SETTINGS_PROXY_HOST")
+	addr_hbox.add_child(host_label)
+	_proxy_host_input = LineEdit.new()
+	_proxy_host_input.placeholder_text = ProxyConfig.DEFAULT_HOST
+	_proxy_host_input.custom_minimum_size = Vector2(_scaled(200), 0)
+	addr_hbox.add_child(_proxy_host_input)
+	var port_label = Label.new()
+	port_label.text = tr("SETTINGS_PROXY_PORT")
+	addr_hbox.add_child(port_label)
+	_proxy_port_spin = SpinBox.new()
+	_proxy_port_spin.min_value = 1
+	_proxy_port_spin.max_value = 65535
+	_proxy_port_spin.value = ProxyConfig.DEFAULT_PORT
+	_proxy_port_spin.custom_minimum_size = Vector2(_scaled(90), 0)
+	addr_hbox.add_child(_proxy_port_spin)
+	var save_btn = Button.new()
+	save_btn.text = tr("BTN_SAVE")
+	save_btn.pressed.connect(_on_save_proxy)
+	addr_hbox.add_child(save_btn)
+	vbox.add_child(addr_hbox)
+
+	inner.add_child(vbox)
+	page.add_child(outer)
+
+	var cfg := ProxyConfig.load_config()
+	_proxy_enable_cb.button_pressed = cfg.get("enabled", false)
+	_proxy_host_input.text = cfg.get("host", ProxyConfig.DEFAULT_HOST)
+	_proxy_port_spin.value = int(cfg.get("port", ProxyConfig.DEFAULT_PORT))
+
+	return page
+
+
+func _on_save_proxy() -> void:
+	var cfg := {
+		"enabled": _proxy_enable_cb.button_pressed,
+		"host": _proxy_host_input.text.strip_edges(),
+		"port": int(_proxy_port_spin.value),
+	}
+	if cfg["host"].is_empty():
+		cfg["host"] = ProxyConfig.DEFAULT_HOST
+	ProxyConfig.save_config(cfg)
+	_apply_proxy_to_all()
+	_show_toast(tr("TOAST_PROXY_SAVED"))
+
+
+func _apply_proxy_to_all() -> void:
+	release_manager.apply_proxy()
+	if _device_flow and is_instance_valid(_device_flow):
+		_device_flow.apply_proxy()
+	for key in _settings_platform_rows:
+		var row: Dictionary = _settings_platform_rows[key]
+		var http: HTTPRequest = row.get("validate_http", null)
+		if http != null and is_instance_valid(http):
+			ProxyConfig.apply_to_http(http)
 
 
 func _build_cache_category_panel() -> Control:
@@ -4456,6 +4550,7 @@ func _on_pat_validate(key: String) -> void:
 	var http: HTTPRequest = row.get("validate_http", null)
 	if http == null or not is_instance_valid(http):
 		http = HTTPRequest.new()
+		ProxyConfig.apply_to_http(http)
 		add_child(http)
 		row["validate_http"] = http
 	http.cancel_request()

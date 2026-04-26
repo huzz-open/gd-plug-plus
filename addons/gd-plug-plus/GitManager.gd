@@ -7,6 +7,7 @@ extends RefCounted
 
 const ERR_CANCELLED = -99
 const GIT_TIMEOUT_ARGS: Array = ["-c", "http.lowSpeedLimit=100", "-c", "http.lowSpeedTime=60"]
+const _ProxyConfig = preload("res://addons/gd-plug-plus/release/ProxyConfig.gd")
 const _DOMAIN_NAME = "gd-plug-plus"
 
 static var _cancel_requested: bool = false
@@ -43,7 +44,9 @@ static func reset_cancel():
 
 ## Call git directly, bypassing cmd.exe to avoid % expansion issues on Windows.
 static func git(repo_dir: String, args: Array, output: Array = []) -> int:
-	var full_args: Array = ["-C", repo_dir]
+	var full_args: Array = []
+	full_args.append_array(_ProxyConfig.get_git_proxy_args())
+	full_args.append_array(["-C", repo_dir])
 	full_args.append_array(args)
 	return OS.execute("git", full_args, output)
 
@@ -63,6 +66,13 @@ static func _execute_cancellable(args: Array, read_stderr: bool = true) -> Dicti
 	if _cancel_requested:
 		result["exit"] = ERR_CANCELLED
 		return result
+
+	var proxy_args := _ProxyConfig.get_git_proxy_args()
+	if not proxy_args.is_empty():
+		var combined := Array()
+		combined.append_array(proxy_args)
+		combined.append_array(args)
+		args = combined
 
 	var cache_dir = OS.get_cache_dir()
 	var tmp_out = cache_dir.path_join("gd-plug-git-out.tmp")
