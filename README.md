@@ -2,19 +2,7 @@
 
 **English | [中文](README_zh.md)**
 
-A plugin manager for Godot 4.x with built-in editor UI. Manage addon installation, updates, and version pinning — all from within the editor, no config scripts needed.
-
-## Features
-
-- **Browse & Install** — discover addons from the community index or search by Git URL
-- **GitHub Releases** — install addons directly from GitHub / Codeberg / Gitee Releases (GDExtensions, pre-built binaries, etc.)
-- **Per-plugin versioning** — pin each addon to a branch, tag, or specific commit independently
-- **One-click updates** — check for updates and apply them in batch or per-addon
-- **Multi-plugin repos** — repos containing multiple addons are detected and managed individually
-- **Conflict detection** — warns when an addon directory already exists, with overwrite/cancel options
-- **API Token management** — configure platform tokens (PAT or GitHub Device Flow OAuth) once, shared across all projects
-- **Self-update** — gd-plug-plus tracks and updates itself through its own UI
-- **Legacy migration** — auto-imports existing `plug.gd` + `index.cfg` setups
+A plugin manager for Godot 4.x with built-in editor UI. Browse, install, update, and version-pin addons — all from within the editor, no config scripts needed.
 
 ## Requirements
 
@@ -27,29 +15,55 @@ Copy `addons/gd-plug-plus/` into your project's `addons/` directory, then enable
 
 ## Usage
 
-1. Open the **gd-plug-plus** panel in the editor
-2. **Install New** tab → browse the Available list or enter a Git URL and search
-3. Select addons, optionally change branch/tag, click **Install Selected**
-4. **Installed** tab → check versions, update, switch branches, or uninstall
+### Install Addons
 
-All state is stored in `addons.json` — no `plug.gd` file needed.
+Switch to the **Install New** tab. The built-in catalog lists community addons ready for one-click install. You can also type a Git URL into the search bar and click **Search** to find any public repository.
 
-### Installing from Releases
+Select the addons you want, then click **Install Selected**.
 
-Some addons (especially GDExtensions) are distributed as pre-built binaries via GitHub Releases rather than as source code in the repository tree.
+![Install addons from built-in catalog](img/install.png)
 
-1. Enter the repository URL and tick the **Search Releases** checkbox before searching
-2. gd-plug-plus queries the platform's Release API, matches archive assets (`.zip`, `.tar.gz`, etc.) automatically, and presents them alongside source-based results
-3. Select the desired release asset and click **Install Selected** — the asset is downloaded, extracted, and copied into your project
-4. Installed release addons are marked with `[R]` in the branch/tag column and can be switched to a different release tag in-place
+### Install GDExtensions from Releases
 
-> If the platform token is not configured, gd-plug-plus will prompt you to set one up before the release search proceeds (see [Token Configuration](#token-configuration) below).
+Some addons (especially GDExtensions) ship as pre-built binaries via GitHub Releases instead of raw source code.
+
+1. Enter the repository URL, tick the **Release** checkbox, and click **Search**
+
+![Search release extensions](img/install_release_extension_search.png)
+
+2. Select the result and click **Install Selected** — the asset is downloaded with real-time progress, extracted, and copied into your project
+
+![Download release extension](img/install_release_extension_download.png)
+
+### Check for Updates
+
+On the **Installed** tab, click **Check Versions** to compare every installed addon against its remote. Addons with new commits will show an **Update** button.
+
+![Check versions](img/check-versions.png)
+
+### Update All
+
+Click **Update All** to pull the latest changes for every addon in one batch.
+
+![Update all addons](img/update-all.png)
+
+### Switch Version
+
+Click the branch/tag or commit link of any installed addon to switch it to a different branch, tag, or commit.
+
+![Switch version](img/update-version.png)
+
+### Switch Release Version
+
+For addons installed from Releases, click the tag link (e.g. `v2.0.0 [R]`) to switch to a different release tag. The new asset is downloaded and replaces the old one, with a progress bar and the option to cancel.
+
+![Switch release version](img/release_version_change.png)
 
 ### Token Configuration
 
 Platform API tokens are required for Release searches and downloads (to avoid rate limits and access private repos). Tokens are stored in an **encrypted file outside the project** and shared across all Godot projects on the same machine.
 
-**Settings tab → Auth** provides per-platform token management:
+Go to **Settings → Auth** to configure tokens:
 
 | Platform | Auth Methods | How to obtain |
 |---|---|---|
@@ -59,41 +73,25 @@ Platform API tokens are required for Release searches and downloads (to avoid ra
 
 - **Device Flow** (GitHub only): click "Device Flow Login", a code appears — open the browser link, enter the code, authorize, and the token is saved automatically.
 - **PAT** (all platforms): paste a Personal Access Token into the input field and click Save.
-- **Validate**: verifies the token is still valid via an API call.
 
-Token file location: `~/.config/gd-plug-plus/tokens.dat` (Linux/macOS) or `%APPDATA%/gd-plug-plus/tokens.dat` (Windows).
+Token file location: `$XDG_CONFIG_HOME/gd-plug-plus/tokens.dat` (Linux/macOS) or `%APPDATA%/gd-plug-plus/tokens.dat` (Windows).
 
-## How It Works
+### Proxy Configuration
 
-### Search Priority
+Go to **Settings → Network** to configure an HTTP/HTTPS proxy. When enabled, the proxy applies to all network requests — both Godot HTTP requests and git subprocess commands.
 
-When you search a URL, gd-plug-plus looks up data in this order:
+## Contributing
 
-1. **Local cache** (`.plugged/`) — instant, no network
-2. **Plugin index** (`addon_index.json`) — instant, no network
-3. **Remote** — `git ls-remote` + shallow clone
+### Plugin Index
 
-### Data Files
-
-| File | Role |
-|---|---|
-| `addons.json` | Tracks installed addons (user data, gitignored) |
-| `addon_index.json` | Community plugin catalog (ships with the plugin, updated via self-update) |
-
-### Self-Update
-
-gd-plug-plus registers itself in `addons.json` on first run. Updates flow through the same mechanism as any other addon. After self-update, `addon_index.json` is refreshed automatically and a project reload is prompted.
-
-## Contributing to the Plugin Index
-
-The Available list in the Install New tab is powered by `addon_index.json`. To add a plugin:
+The built-in addon catalog in the **Install New** tab is powered by [`addon_index.json`](addons/gd-plug-plus/addon_index.json). Anyone can contribute new entries:
 
 1. Fork the [gd-plug-plus repo](https://github.com/huzz-open/gd-plug-plus)
 2. Edit `addons/gd-plug-plus/addon_index.json`
 3. Add an entry following the format below
 4. Submit a Pull Request
 
-### Format
+#### Format
 
 `addon_index.json` is a JSON array. Each element represents a repository:
 
@@ -115,7 +113,7 @@ The Available list in the Install New tab is powered by `addon_index.json`. To a
 ]
 ```
 
-### Fields
+#### Fields
 
 | Field | Required | Description |
 |---|---|---|
@@ -129,34 +127,6 @@ The Available list in the Install New tab is powered by `addon_index.json`. To a
 | `addons[].type` | No | `plugin` (default) or `gdextension` |
 
 For repos with multiple addons, list each as a separate element in the `addons` array.
-
-## GDScript Linting
-
-This project uses [gdtoolkit](https://github.com/Scony/godot-gdscript-toolkit) (`gdlint`) for static analysis of GDScript code.
-
-### Install
-
-```bash
-pip3 install "gdtoolkit==4.*"
-```
-
-### Manual Usage
-
-Lint a single file:
-
-```bash
-gdlint addons/gd-plug-plus/plugin.gd
-```
-
-Lint all `.gd` files in the project:
-
-```bash
-gdlint addons/gd-plug-plus/
-```
-
-### Cursor Hook (automatic)
-
-A Cursor hook is configured in `.cursor/hooks.json`. After every `.gd` file edit, `gdlint` runs automatically and reports any issues in the agent context. No manual action required — just edit code and the hook handles the rest.
 
 ## Acknowledgements
 
