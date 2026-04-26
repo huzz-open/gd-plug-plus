@@ -34,7 +34,7 @@ const INSTALLED_COL_EXPAND: Array[bool] = [
 #        RepoPath, Author
 # ===========================================================================
 
-const SEARCH_COL_WIDTHS: Array[int] = [36, 70, 110, 70, 85, 120, 100, 110, 80]
+const SEARCH_COL_WIDTHS: Array[int] = [36, 100, 110, 70, 85, 120, 100, 110, 50]
 const SEARCH_COL_EXPAND: Array[bool] = [false, false, true, false, false, false, false, true, true]
 
 ## 搜索结果 Tree 控件的最小高度(px)。值越大，搜索区域在面板中占比越大。

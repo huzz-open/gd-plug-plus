@@ -29,6 +29,8 @@ const SELF_ADDON_DIR = "addons/gd-plug-plus"
 var addon_data: AddonData = AddonData.new()
 var loading_spinner: TextureRect
 var release_manager: ReleaseManager
+var _download_progress_bar: ProgressBar
+var _overlay_base_text: String = ""
 
 var _is_executing: bool = false
 var _version_info_task_id: int = -1
@@ -257,6 +259,18 @@ func _ready():
 	overlay_vbox.add_theme_constant_override(
 		"separation", _scaled(PlugUIConstants.SEPARATION_LARGE)
 	)
+	_download_progress_bar = ProgressBar.new()
+	_download_progress_bar.custom_minimum_size = Vector2(_scaled(300), 0)
+	_download_progress_bar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_download_progress_bar.visible = false
+	_download_progress_bar.show_percentage = true
+	var cancel_btn_idx := cancel_update_btn.get_index() if cancel_update_btn else -1
+	if cancel_btn_idx >= 0:
+		overlay_vbox.add_child(_download_progress_bar)
+		overlay_vbox.move_child(_download_progress_bar, cancel_btn_idx)
+	else:
+		overlay_vbox.add_child(_download_progress_bar)
+	release_manager.download_progress.connect(_on_download_progress)
 
 	installed_tree.columns = PlugUIConstants.INSTALLED_COL_WIDTHS.size()
 	installed_tree.column_titles_visible = true
@@ -1059,10 +1073,60 @@ func disable_ui(disabled: bool = true):
 func show_overlay(show: bool = true, text: String = ""):
 	loading_overlay.visible = show
 	loading_label.text = text
+	_overlay_base_text = text
+	if _download_progress_bar:
+		_download_progress_bar.visible = false
+		_download_progress_bar.value = 0
 	if cancel_update_btn:
 		cancel_update_btn.visible = show
 		cancel_update_btn.disabled = false
 		cancel_update_btn.text = tr("BTN_CANCEL")
+
+
+func _on_download_progress(downloaded_bytes: int, total_bytes: int) -> void:
+	if loading_overlay.visible and _download_progress_bar:
+		_download_progress_bar.visible = true
+		if total_bytes > 0:
+			_download_progress_bar.max_value = total_bytes
+			_download_progress_bar.value = downloaded_bytes
+			var pct := int(float(downloaded_bytes) / float(total_bytes) * 100.0)
+			loading_label.text = "%s  (%s / %s  %d%%)" % [
+				_overlay_base_text,
+				String.humanize_size(downloaded_bytes),
+				String.humanize_size(total_bytes),
+				pct,
+			]
+		else:
+			_download_progress_bar.max_value = 100
+			_download_progress_bar.value = 0
+			loading_label.text = "%s  (%s)" % [
+				_overlay_base_text,
+				String.humanize_size(downloaded_bytes),
+			]
+	if not loading_overlay.visible and _is_executing:
+		var tip := _format_download_tooltip(downloaded_bytes, total_bytes)
+		_set_checked_items_status(_format_download_status(downloaded_bytes, total_bytes), COLOR_CHECKING, tip)
+
+
+func _format_download_status(downloaded_bytes: int, total_bytes: int) -> String:
+	var base := tr("STATUS_DOWNLOADING")
+	if total_bytes > 0:
+		var pct := int(float(downloaded_bytes) / float(total_bytes) * 100.0)
+		return "%s%d%%" % [base, pct]
+	return base
+
+
+func _format_download_tooltip(downloaded_bytes: int, total_bytes: int) -> String:
+	if total_bytes > 0:
+		var pct := int(float(downloaded_bytes) / float(total_bytes) * 100.0)
+		return "%s / %s (%d%%)" % [
+			String.humanize_size(downloaded_bytes),
+			String.humanize_size(total_bytes),
+			pct,
+		]
+	if downloaded_bytes > 0:
+		return String.humanize_size(downloaded_bytes)
+	return ""
 
 
 func _ensure_repo_cloned(repo_name: String, fallback_url: String = "") -> bool:
@@ -1979,10 +2043,12 @@ func _start_release_install(
 		return
 
 	PlugLogger.info("Downloading release %s %s..." % [repo_name, tag])
+	_set_checked_items_status(tr("STATUS_DOWNLOADING"), COLOR_CHECKING)
 	release_manager.download_completed.connect(
 		func(ok: bool, _cache_dir: String):
 			if ok:
 				PlugLogger.debug("_start_release_install: download OK, applying install")
+				_set_checked_items_status(tr("STATUS_INSTALLING"), COLOR_CHECKING)
 				_run_release_install_task(repo_name, tag, addon_dir, also_run_source)
 			else:
 				var err_key = release_manager.get_last_error()
@@ -4847,7 +4913,7 @@ func _refresh_available_item_from_installed(item: TreeItem, repo_name: String, a
 	item.set_text_alignment(6, HORIZONTAL_ALIGNMENT_CENTER)
 
 
-func _set_checked_items_status(status_text: String, color: Color):
+func _set_checked_items_status(status_text: String, color: Color, tooltip: String = ""):
 	var root = search_tree.get_root()
 	if root == null:
 		return
@@ -4856,6 +4922,7 @@ func _set_checked_items_status(status_text: String, color: Color):
 		if child.is_checked(0):
 			child.set_text(1, status_text)
 			child.set_custom_color(1, color)
+			child.set_tooltip_text(1, tooltip)
 			child.set_editable(0, false)
 		child = child.get_next()
 

@@ -15,6 +15,7 @@ COL_ACTIONS,Actions,操作
 STATUS_INSTALLED,Installed,已装
 STATUS_NOT_INSTALLED,Not Installed,未安装
 STATUS_INSTALLING,Installing,安装中
+STATUS_DOWNLOADING,Downloading,下载中
 STATUS_FAILED,Failed,失败
 STATUS_CHECKING,Checking,检查中
 STATUS_UPDATING,Updating,更新中

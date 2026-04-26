@@ -8,6 +8,7 @@ extends Node
 
 signal releases_fetched(releases: Array)
 signal download_completed(success: bool, cache_dir: String)
+signal download_progress(downloaded_bytes: int, total_bytes: int)
 signal tags_fetched(tags: Array)
 
 var _token_store: TokenStore = TokenStore.new()
@@ -19,6 +20,7 @@ var _current_provider: ReleaseProvider
 var _last_error: String = ""
 var _last_detected_type: String = ""
 var _last_detected_addon_dirs: PackedStringArray = []
+var _downloading: bool = false
 
 
 func _ready():
@@ -26,6 +28,14 @@ func _ready():
 	_http.download_chunk_size = 65536
 	add_child(_http)
 	_token_store.load_tokens()
+
+
+func _process(_delta: float) -> void:
+	if not _downloading:
+		return
+	var downloaded := _http.get_downloaded_bytes()
+	var total := _http.get_body_size()
+	download_progress.emit(downloaded, total)
 
 
 func fetch_releases(url: String) -> void:
@@ -90,9 +100,11 @@ func download_asset(
 	PlugLogger.debug("ReleaseManager: cache_dir=%s zip_path=%s" % [cache_dir, zip_path])
 	DirAccess.make_dir_recursive_absolute(cache_dir)
 	PlugLogger.info("Downloading release asset: %s" % asset_url)
+	_downloading = true
 	_current_op = DownloadAssetOp.new(_current_provider, _token_store, _http)
 	_current_op.download_completed.connect(
 		func(ok: bool, path: String):
+			_downloading = false
 			_current_op = null
 			_current_provider = null
 			if ok:
@@ -194,6 +206,7 @@ func _emit_download_completed(success: bool, cache_dir: String) -> void:
 
 
 func cancel() -> void:
+	_downloading = false
 	_http.cancel_request()
 	_current_op = null
 	_current_provider = null
