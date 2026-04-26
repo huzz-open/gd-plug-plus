@@ -2793,6 +2793,13 @@ func _apply_release_from_cache(repo_name: String, new_tag: String):
 		% [repo_name, new_tag, cache_dir]
 	)
 	var installed = addon_data.get_installed_addons(repo_name)
+
+	# --- Phase 1: Backup old addon directories ---
+	var backed_up := _backup_installed_addons(repo_name, installed, project_root)
+
+	# --- Phase 2: Copy new version from cache ---
+	var success := true
+	var installed_tags: Array[Dictionary] = []
 	for p in installed:
 		var addon_dir_rel: String = p.get("addon_dir", "")
 		if addon_dir_rel.is_empty():
@@ -2821,18 +2828,74 @@ func _apply_release_from_cache(repo_name: String, new_tag: String):
 		if copied == 0:
 			PlugLogger.info("Release cache stale: 0 files copied, clearing cache %s" % cache_dir)
 			release_manager.clear_tag_cache(repo_name, new_tag)
+			success = false
 			continue
-		addon_data.set_addon_installed_tag(repo_name, addon_dir_rel, new_tag)
-	# Refresh detected type for the new tag's content (cache-hit path may have
-	# stale `_last_detected_type` from a previous tag), then overwrite
-	# tag-specific metadata (name/description/version/author) from the new
-	# tag's plugin.cfg so the installed tab reflects the switched tag.
+		installed_tags.append({"dir": addon_dir_rel, "tag": new_tag})
+
+	# --- Phase 3: Check cancel / failure and handle ---
+	if _update_cancelled or not success:
+		PlugLogger.info("Version switch rolled back for %s" % repo_name)
+		_rollback_release_switch(backed_up, project_root, repo_name)
+		return
+
+	for entry in installed_tags:
+		addon_data.set_addon_installed_tag(repo_name, entry["dir"], entry["tag"])
 	release_manager.inspect_cache_dir(cache_dir)
 	_backfill_release_addon_metadata(repo_name, cache_dir, true)
 	addon_data.save_data()
-	# Use `_tr` (TranslationServer-based) instead of `tr()` because this
-	# function runs in WorkerThreadPool and `Node.tr()` requires main thread.
+	_cleanup_upgrade_backup(repo_name)
 	PlugLogger.info(_tr("LOG_RELEASE_CACHED") % new_tag)
+
+
+## Backup all currently installed addon directories for a repo before switching.
+## Returns an array of {addon_dir_rel, backup_path} for later restore.
+func _backup_installed_addons(
+	repo_name: String, installed: Array, project_root: String
+) -> Array:
+	var backup_root := _get_upgrade_backup_dir(repo_name)
+	var backed_up: Array = []
+	for p in installed:
+		var addon_dir_rel: String = p.get("addon_dir", "")
+		if addon_dir_rel.is_empty():
+			continue
+		var full_path := project_root.path_join(addon_dir_rel)
+		if not DirAccess.dir_exists_absolute(full_path):
+			continue
+		var backup_path := backup_root.path_join(addon_dir_rel.get_file())
+		DirAccess.make_dir_recursive_absolute(backup_root)
+		PlugLogger.debug("Backing up %s → %s" % [full_path, backup_path])
+		GitManager._copy_dir_recursive(full_path, backup_path)
+		GitManager.delete_installed_dir(addon_dir_rel)
+		backed_up.append({"addon_dir_rel": addon_dir_rel, "backup_path": backup_path})
+	return backed_up
+
+
+## Restore addon directories from backup and clean up.
+func _rollback_release_switch(
+	backed_up: Array, project_root: String, repo_name: String
+) -> void:
+	for b in backed_up:
+		var dst := project_root.path_join(b["addon_dir_rel"])
+		var src: String = b["backup_path"]
+		if DirAccess.dir_exists_absolute(dst):
+			GitManager.delete_directory(dst)
+		PlugLogger.debug("Restoring backup %s → %s" % [src, dst])
+		DirAccess.make_dir_recursive_absolute(dst)
+		GitManager._copy_dir_recursive(src, dst)
+	_cleanup_upgrade_backup(repo_name)
+
+
+func _get_upgrade_backup_dir(repo_name: String) -> String:
+	var safe_name := repo_name.replace("/", "_")
+	return OS.get_cache_dir().path_join("gd-plug-plus").path_join(
+		"_upgrade_backup"
+	).path_join(safe_name)
+
+
+func _cleanup_upgrade_backup(repo_name: String) -> void:
+	var backup_dir := _get_upgrade_backup_dir(repo_name)
+	if DirAccess.dir_exists_absolute(backup_dir):
+		GitManager.delete_directory(backup_dir)
 
 
 func _copy_release_auto_detect(
