@@ -120,6 +120,13 @@ SETTINGS_HEADER_TOKENS,Release Platform Tokens,Release 平台令牌
 SETTINGS_DESC_TOKENS,"Configure tokens to enable Release search across release platforms. Tokens are encrypted and shared across all Godot projects on this machine.","配置令牌以启用各平台的 Release 搜索。令牌将加密保存，所有 Godot 项目共享。"
 SETTINGS_PATH_HINT,Storage:,存储位置：
 SETTINGS_CATEGORY_AUTH,Platform Tokens,平台令牌
+SETTINGS_CATEGORY_CACHE,Cache,缓存
+CACHE_SECTION_REPO,Repository Cache,仓库缓存
+CACHE_SECTION_RELEASE,Release Cache,Release 缓存
+CACHE_PATH,Path:,路径：
+BTN_CLEAR_CACHE,Clear Cache,清除缓存
+BTN_CLEARING_CACHE,Clearing...,清除中...
+TOAST_CACHE_CLEARED,Cache cleared,缓存已清除
 SETTINGS_CATEGORY_ABOUT,About,关于
 SETTINGS_LINK_VIEW,View,查看
 ABOUT_PLUGIN_NAME,Plugin,插件名称

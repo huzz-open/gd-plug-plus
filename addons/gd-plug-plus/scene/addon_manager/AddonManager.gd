@@ -123,6 +123,11 @@ var _settings_flash_tween: Tween
 var _settings_refreshing: bool = false
 var _settings_header_rtl: RichTextLabel
 var _about_labels: Array[Dictionary] = []
+var _cache_labels: Array[Dictionary] = []
+var _cache_repo_path_label: Label
+var _cache_release_path_label: Label
+var _cache_clear_repo_btn: Button
+var _cache_clear_release_btn: Button
 var _console_header_height: int = PlugUIConstants.CONSOLE_HEADER_HEIGHT
 var _console_expanded_height: int = PlugUIConstants.CONSOLE_EXPANDED_HEIGHT
 
@@ -2545,14 +2550,11 @@ func _uninstall_repo(repo_name: String):
 	_erase_commit_cache_for_repo(repo_name)
 	_refresh_installed_tree()
 	_update_search_tree_install_status()
-	var rm := release_manager
 	WorkerThreadPool.add_task(
 		func():
 			for p in installed:
 				var dest: String = p.get("addon_dir", "")
 				GitManager.delete_installed_dir(dest)
-			if rm:
-				rm.clear_repo_cache(repo_name)
 	)
 
 
@@ -3747,6 +3749,11 @@ func _setup_settings_tab():
 	var auth_panel := _build_auth_category_panel(margin)
 	content_vbox.add_child(auth_panel)
 	_register_settings_category("auth", sidebar_vbox, "SETTINGS_CATEGORY_AUTH", auth_panel)
+	var cache_panel := _build_cache_category_panel()
+	content_vbox.add_child(cache_panel)
+	_register_settings_category(
+		"cache", sidebar_vbox, "SETTINGS_CATEGORY_CACHE", cache_panel
+	)
 	var about_panel := _build_about_category_panel()
 	content_vbox.add_child(about_panel)
 	_register_settings_category("about", sidebar_vbox, "SETTINGS_CATEGORY_ABOUT", about_panel)
@@ -3823,6 +3830,149 @@ func _build_auth_category_panel(_margin: int) -> Control:
 		page.add_child(outer)
 		_settings_platform_panels[key] = outer
 	return page
+
+
+func _build_cache_category_panel() -> Control:
+	var page = VBoxContainer.new()
+	page.add_theme_constant_override(
+		"separation", _scaled(PlugUIConstants.SEPARATION_LARGE)
+	)
+	page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_cache_labels.clear()
+	var repo_path := GitManager.get_plugged_dir()
+	var release_path := ReleaseCache.get_cache_root()
+	var sections: Array[Dictionary] = [
+		{
+			"title_key": "CACHE_SECTION_REPO",
+			"path": repo_path,
+			"btn_key": "BTN_CLEAR_CACHE",
+			"callback": _on_clear_repo_cache,
+			"path_ref": "repo",
+		},
+		{
+			"title_key": "CACHE_SECTION_RELEASE",
+			"path": release_path,
+			"btn_key": "BTN_CLEAR_CACHE",
+			"callback": _on_clear_release_cache,
+			"path_ref": "release",
+		},
+	]
+	for sec in sections:
+		var outer = MarginContainer.new()
+		var panel = PanelContainer.new()
+		outer.add_child(panel)
+		var inner = MarginContainer.new()
+		var pad := _scaled(8)
+		inner.add_theme_constant_override("margin_left", pad)
+		inner.add_theme_constant_override("margin_right", pad)
+		inner.add_theme_constant_override("margin_top", pad)
+		inner.add_theme_constant_override("margin_bottom", pad)
+		panel.add_child(inner)
+		var vbox = VBoxContainer.new()
+		vbox.add_theme_constant_override(
+			"separation",
+			_scaled(PlugUIConstants.SEPARATION_STANDARD),
+		)
+		var title_hbox = HBoxContainer.new()
+		title_hbox.add_theme_constant_override(
+			"separation",
+			_scaled(PlugUIConstants.SEPARATION_STANDARD),
+		)
+		var title = Label.new()
+		title.text = tr(sec["title_key"])
+		title.add_theme_color_override("font_color", COLOR_URL)
+		title_hbox.add_child(title)
+		_cache_labels.append(
+			{"label": title, "i18n_key": sec["title_key"]}
+		)
+		var btn = Button.new()
+		btn.text = tr(sec["btn_key"])
+		btn.pressed.connect(sec["callback"])
+		if sec["path_ref"] == "repo":
+			_cache_clear_repo_btn = btn
+		else:
+			_cache_clear_release_btn = btn
+		title_hbox.add_child(btn)
+		vbox.add_child(title_hbox)
+		var hbox = HBoxContainer.new()
+		hbox.add_theme_constant_override(
+			"separation",
+			_scaled(PlugUIConstants.SEPARATION_STANDARD),
+		)
+		var path_key = Label.new()
+		path_key.text = tr("CACHE_PATH")
+		path_key.add_theme_color_override(
+			"font_color", COLOR_UNKNOWN
+		)
+		hbox.add_child(path_key)
+		_cache_labels.append(
+			{"label": path_key, "i18n_key": "CACHE_PATH"}
+		)
+		var path_val = Label.new()
+		path_val.text = sec["path"]
+		path_val.clip_text = true
+		path_val.text_overrun_behavior = (
+			TextServer.OVERRUN_TRIM_ELLIPSIS
+		)
+		path_val.tooltip_text = sec["path"]
+		path_val.size_flags_horizontal = (
+			Control.SIZE_EXPAND_FILL
+		)
+		path_val.mouse_filter = Control.MOUSE_FILTER_STOP
+		path_val.mouse_default_cursor_shape = (
+			Control.CURSOR_POINTING_HAND
+		)
+		var open_path: String = sec["path"]
+		path_val.gui_input.connect(
+			func(event: InputEvent):
+				if (
+					event is InputEventMouseButton
+					and event.pressed
+					and event.button_index == MOUSE_BUTTON_LEFT
+				):
+					OS.shell_open(open_path)
+		)
+		hbox.add_child(path_val)
+		if sec["path_ref"] == "repo":
+			_cache_repo_path_label = path_val
+		else:
+			_cache_release_path_label = path_val
+		vbox.add_child(hbox)
+		inner.add_child(vbox)
+		page.add_child(outer)
+	return page
+
+
+func _on_clear_repo_cache() -> void:
+	_clear_cache_async(
+		GitManager.get_plugged_dir(), _cache_clear_repo_btn
+	)
+
+
+func _on_clear_release_cache() -> void:
+	_clear_cache_async(
+		ReleaseCache.get_cache_root(), _cache_clear_release_btn
+	)
+
+
+func _clear_cache_async(path: String, btn: Button) -> void:
+	if btn:
+		btn.disabled = true
+		btn.text = tr("BTN_CLEARING_CACHE")
+	WorkerThreadPool.add_task(
+		func():
+			if DirAccess.dir_exists_absolute(path):
+				GitManager.delete_directory(path)
+				DirAccess.make_dir_recursive_absolute(path)
+			call_deferred("_on_cache_cleared", btn)
+	)
+
+
+func _on_cache_cleared(btn: Button) -> void:
+	if btn:
+		btn.disabled = false
+		btn.text = tr("BTN_CLEAR_CACHE")
+	_show_toast(tr("TOAST_CACHE_CLEARED"))
 
 
 func _build_about_category_panel() -> Control:
@@ -4099,6 +4249,12 @@ func _retranslate_settings_tab() -> void:
 		_settings_header_rtl.text = _build_header_bbcode(token_dir)
 	for entry in _about_labels:
 		(entry["label"] as Label).text = tr(entry["i18n_key"])
+	for entry in _cache_labels:
+		(entry["label"] as Label).text = tr(entry["i18n_key"])
+	if _cache_clear_repo_btn:
+		_cache_clear_repo_btn.text = tr("BTN_CLEAR_CACHE")
+	if _cache_clear_release_btn:
+		_cache_clear_release_btn.text = tr("BTN_CLEAR_CACHE")
 	_refresh_all_platform_rows()
 
 
