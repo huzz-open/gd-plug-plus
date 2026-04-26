@@ -21,7 +21,13 @@ func is_cached(repo_name: String, tag: String) -> bool:
 	if dir == null:
 		return false
 	dir.list_dir_begin()
-	var has_content = not dir.get_next().is_empty()
+	var has_content := false
+	var fname := dir.get_next()
+	while not fname.is_empty():
+		if not fname.begins_with("."):
+			has_content = true
+			break
+		fname = dir.get_next()
 	dir.list_dir_end()
 	return has_content
 

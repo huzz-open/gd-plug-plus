@@ -768,7 +768,7 @@ func _refresh_installed_tree(filter_text: String = ""):
 		child.set_custom_color(1, COLOR_URL)
 
 		var ver = first_addon.get("version", "")
-		child.set_text(2, ("v" + ver) if not ver.is_empty() else "")
+		child.set_text(2, _format_version(ver))
 		child.set_text_alignment(2, HORIZONTAL_ALIGNMENT_CENTER)
 
 		# Col 3: branch/tag
@@ -875,7 +875,7 @@ func _refresh_installed_tree(filter_text: String = ""):
 				sub_item.set_text(1, sp.get("description", ""))
 				sub_item.set_custom_color(1, COLOR_URL)
 				var sp_ver = sp.get("version", "")
-				sub_item.set_text(2, ("v" + sp_ver) if not sp_ver.is_empty() else "")
+				sub_item.set_text(2, _format_version(sp_ver))
 				sub_item.set_text(
 					5,
 					tr("SUB_INSTALLED") if sp.get("installed", false) else tr("SUB_NOT_INSTALLED")
@@ -1127,6 +1127,12 @@ func _format_download_tooltip(downloaded_bytes: int, total_bytes: int) -> String
 	if downloaded_bytes > 0:
 		return String.humanize_size(downloaded_bytes)
 	return ""
+
+
+func _format_version(ver: String, fallback: String = "") -> String:
+	if ver.is_empty():
+		return fallback
+	return ver
 
 
 func _ensure_repo_cloned(repo_name: String, fallback_url: String = "") -> bool:
@@ -1608,7 +1614,7 @@ func _finalize_search_display(found_addons: Array):
 			item.set_tooltip_text(2, _search_url)
 
 		var ver = p.get("version", "")
-		item.set_text(3, ("v" + ver) if not ver.is_empty() else "")
+		item.set_text(3, _format_version(ver))
 
 		var is_from_release = p.get("_from_release", false)
 		var type_raw = p.get("type", "")
@@ -2226,8 +2232,14 @@ func _backfill_release_addon_metadata(
 			if scan_by_dir.has(pdir_tail):
 				md = scan_by_dir[pdir_tail]
 		if md.is_empty():
+			var fallback_patch: Dictionary = {}
 			if p.get("type", "") == "" and not detected_type.is_empty():
-				addon_data.update_addon_metadata(repo_name, pdir, {"type": detected_type})
+				fallback_patch["type"] = detected_type
+			var tag_fb: String = p.get("installed_tag", "")
+			if not tag_fb.is_empty() and (force_overwrite or p.get("version", "") == ""):
+				fallback_patch["version"] = tag_fb
+			if not fallback_patch.is_empty():
+				addon_data.update_addon_metadata(repo_name, pdir, fallback_patch)
 			continue
 		var patch: Dictionary = {"type": md.get("type", detected_type)}
 		var current_name: String = p.get("name", "")
@@ -2241,6 +2253,10 @@ func _backfill_release_addon_metadata(
 		for k in ["description", "version", "author"]:
 			if md.get(k, "") != "" and (force_overwrite or p.get(k, "") == ""):
 				patch[k] = md[k]
+		if not patch.has("version") or patch["version"] == "":
+			var tag_fallback: String = p.get("installed_tag", "")
+			if not tag_fallback.is_empty() and (force_overwrite or p.get("version", "") == ""):
+				patch["version"] = tag_fallback
 		addon_data.update_addon_metadata(repo_name, pdir, patch)
 
 
@@ -2570,6 +2586,8 @@ func _on_CancelUpdateBtn_pressed():
 	show_overlay(false)
 	if _is_executing:
 		_update_cancelled = true
+		if not _update_active:
+			_update_done = true
 		PlugLogger.info(_tr("LOG_UPDATE_CANCELLED"))
 	elif _version_info_task_id_active:
 		var check_keys: Array = []
@@ -2717,8 +2735,19 @@ func _switch_release_version(repo_name: String, new_tag: String):
 		var addon_dir = installed[0].get("addon_dir", "") if not installed.is_empty() else ""
 		release_manager.releases_fetched.connect(
 			func(releases: Array):
+				var target_release: Dictionary = {}
+				for rel in releases:
+					if rel.get("tag_name", "") == new_tag:
+						target_release = rel
+						break
+				if target_release.is_empty():
+					_show_toast(tr("ERR_RELEASE_NOT_FOUND"), true)
+					_is_executing = false
+					show_overlay(false)
+					disable_ui(false)
+					return
 				var matched_assets = AssetMatcher.match_assets(
-					releases[0].get("assets", []) if not releases.is_empty() else [], pattern, url
+					target_release.get("assets", []), pattern, url
 				)
 				if matched_assets.is_empty():
 					_show_toast(tr("ERR_RELEASE_NOT_FOUND"), true)
@@ -4851,7 +4880,7 @@ func _refresh_available_item_from_installed(item: TreeItem, repo_name: String, a
 		return
 
 	var ver: String = match_addon.get("version", "")
-	item.set_text(3, ("v" + ver) if not ver.is_empty() else "--")
+	item.set_text(3, _format_version(ver, "--"))
 	item.set_text_alignment(3, HORIZONTAL_ALIGNMENT_CENTER)
 
 	var is_release_installed: bool = match_addon.get("installed_from", "") == "release"
