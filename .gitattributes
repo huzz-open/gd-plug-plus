@@ -1,2 +1,16 @@
 # Normalize EOL for all files that Git considers text files.
 * text=auto eol=lf
+
+# Exclude non-addon files from archive (used by Godot Asset Library downloads)
+/.cursor        export-ignore
+/.github        export-ignore
+/img            export-ignore
+.editorconfig   export-ignore
+.gdignore       export-ignore
+.gitattributes  export-ignore
+.gitignore      export-ignore
+.godot-path     export-ignore
+icon.png        export-ignore
+LICENSE         export-ignore
+README.md       export-ignore
+README_zh.md    export-ignore
