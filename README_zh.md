@@ -11,6 +11,17 @@ Godot 4.x 插件管理器，内置编辑器 UI。在编辑器内浏览、安装�
 
 ## 安装
 
+### 通过 Godot 资产库安装（推荐）
+
+1. 在 Godot 中打开项目，切换到 **AssetLib** 选项卡
+2. 搜索 **gd-plug-plus**
+3. 点击搜索结果，然后点击 **下载** → **安装**
+4. 在 **项目 → 项目设置 → 插件** 中启用
+
+也可以直接在浏览器中访问资产页面：[godotengine.org/asset-library/asset/5091](https://godotengine.org/asset-library/asset/5091)
+
+### 手动安装
+
 将 `addons/gd-plug-plus/` 复制到项目的 `addons/` 目录，然后在 **项目 → 项目设置 → 插件** 中启用。
 
 ## 使用方法

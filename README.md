@@ -11,6 +11,17 @@ A plugin manager for Godot 4.x with built-in editor UI. Browse, install, update,
 
 ## Installation
 
+### From Godot Asset Library (Recommended)
+
+1. Open your project in Godot, go to the **AssetLib** tab
+2. Search for **gd-plug-plus**
+3. Click the result, then click **Download** → **Install**
+4. Enable the plugin in **Project → Project Settings → Plugins**
+
+You can also browse the asset page directly: [godotengine.org/asset-library/asset/5091](https://godotengine.org/asset-library/asset/5091)
+
+### Manual Installation
+
 Copy `addons/gd-plug-plus/` into your project's `addons/` directory, then enable the plugin in **Project → Project Settings → Plugins**.
 
 ## Usage
