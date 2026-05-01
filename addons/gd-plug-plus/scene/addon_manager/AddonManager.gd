@@ -99,6 +99,9 @@ var _install_cancelled: bool = false
 var _release_checkbox: CheckBox
 var _search_coordinator: SearchCoordinator = SearchCoordinator.new()
 var _release_search_pending: bool = false
+var _raw_releases: Array = []
+var _raw_release_pattern: String = ""
+var _raw_release_url: String = ""
 ## platform_key -> outer MarginContainer wrapping the platform PanelContainer
 ## (used by _focus_settings_tab to flash + ensure_control_visible).
 var _settings_platform_panels: Dictionary = {}
@@ -1395,15 +1398,22 @@ func _on_search_completed():
 	_search_coordinator.on_source_completed(_search_result)
 
 
-func _on_coordinator_search_completed(source_result: Dictionary, release_result: Array):
+func _on_coordinator_search_completed(source_result: Dictionary, _release_result: Array):
+	var release_addons: Array = []
+	if not _raw_releases.is_empty():
+		PlugLogger.info(_tr("LOG_RELEASE_SEARCH_DONE") % _raw_releases.size())
+		release_addons = _build_release_addons(
+			_raw_releases, _raw_release_pattern, _raw_release_url
+		)
+		_raw_releases = []
 	PlugLogger.debug(
 		(
 			"coordinator completed: source_addons=%d release_addons=%d"
-			% [source_result.get("addons", []).size(), release_result.size()]
+			% [source_result.get("addons", []).size(), release_addons.size()]
 		)
 	)
 	var found_addons: Array = source_result.get("addons", []).duplicate()
-	for r in release_result:
+	for r in release_addons:
 		found_addons.append(r)
 	_finalize_search_display(found_addons)
 
@@ -1420,13 +1430,14 @@ func _start_release_search(url: String):
 		index_entry.get("release_asset_pattern", "") if not index_entry.is_empty() else ""
 	)
 	PlugLogger.debug("_start_release_search: calling fetch_releases, pattern='%s'" % pattern)
+	_raw_release_pattern = pattern
+	_raw_release_url = url
 	_disconnect_release_signals()
 	release_manager.releases_fetched.connect(
 		func(releases: Array):
 			PlugLogger.debug("_start_release_search: got %d releases" % releases.size())
-			var release_addons = _build_release_addons(releases, pattern, url)
-			PlugLogger.info(_tr("LOG_RELEASE_SEARCH_DONE") % releases.size())
-			_search_coordinator.on_release_completed(release_addons),
+			_raw_releases = releases
+			_search_coordinator.on_release_completed([]),
 		CONNECT_ONE_SHOT
 	)
 	release_manager.fetch_releases(url)
@@ -4964,6 +4975,7 @@ func _on_CancelSearchBtn_pressed():
 	_search_btn.text = tr("BTN_SEARCH")
 	_tree_mode = TreeMode.AVAILABLE
 	_release_search_pending = false
+	_raw_releases = []
 	_search_coordinator.reset(false)
 	PlugLogger.info(_tr("LOG_SEARCH_CANCELLED"))
 
