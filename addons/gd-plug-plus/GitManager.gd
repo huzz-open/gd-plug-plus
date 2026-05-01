@@ -564,12 +564,35 @@ static func rev_parse_head(repo_dir: String) -> String:
 ## addon_dir: relative path like "addons/my_addon"
 ## dest_base: global path to project root (res://)
 ## Returns file count copied.
+## For root-level plugins (plugin.cfg at repo root with addon_dir remapped to
+## "addons/<name>"), falls back to copying from source_base directly.
 static func copy_addon_dir(source_base: String, addon_dir: String, dest_base: String) -> int:
 	var from = source_base + "/" + addon_dir
 	var to = dest_base + "/" + addon_dir
 	if not DirAccess.dir_exists_absolute(from):
-		return 0
+		if _is_root_level_addon(source_base):
+			from = source_base
+		else:
+			return 0
 	return _copy_dir_recursive(from, to)
+
+
+## Check if source_base itself is a root-level addon (plugin.cfg or .gdextension at root).
+static func _is_root_level_addon(dir_path: String) -> bool:
+	if FileAccess.file_exists(dir_path + "/plugin.cfg"):
+		return true
+	var dir = DirAccess.open(dir_path)
+	if dir == null:
+		return false
+	dir.list_dir_begin()
+	var fname = dir.get_next()
+	while not fname.is_empty():
+		if not dir.current_is_dir() and fname.get_extension() == "gdextension":
+			dir.list_dir_end()
+			return true
+		fname = dir.get_next()
+	dir.list_dir_end()
+	return false
 
 
 static func _copy_dir_recursive(from: String, to: String) -> int:
@@ -743,11 +766,15 @@ static func _scan_dir_for_addons(
 				var language := "gdscript"
 				if script_file.get_extension() == "cs":
 					language = "csharp"
+				var plugin_name: String = cfg.get_value("plugin", "name", rel_dir.get_file())
+				var addon_dir: String = rel_dir
+				if addon_dir.is_empty():
+					addon_dir = "addons/" + _sanitize_addon_name(plugin_name)
 				(
 					results
 					. append(
 						{
-							"name": cfg.get_value("plugin", "name", rel_dir.get_file()),
+							"name": plugin_name,
 							"description": cfg.get_value("plugin", "description", ""),
 							"author": cfg.get_value("plugin", "author", ""),
 							"version": cfg.get_value("plugin", "version", ""),
@@ -755,7 +782,7 @@ static func _scan_dir_for_addons(
 							"type": "editor_plugin",
 							"language": language,
 							"cfg_path": cfg_rel,
-							"addon_dir": rel_dir if not rel_dir.is_empty() else ".",
+							"addon_dir": addon_dir,
 							"structure": _classify_structure(cfg_rel),
 						}
 					)
@@ -763,18 +790,22 @@ static func _scan_dir_for_addons(
 		elif file_name.get_extension() == "gdextension":
 			var rel_dir = current_dir.replace(base_dir, "").trim_prefix("/")
 			var ext_rel = rel_dir + "/" + file_name if not rel_dir.is_empty() else file_name
+			var ext_name: String = file_name.get_basename()
+			var ext_addon_dir: String = rel_dir
+			if ext_addon_dir.is_empty():
+				ext_addon_dir = "addons/" + _sanitize_addon_name(ext_name)
 			(
 				results
 				. append(
 					{
-						"name": file_name.get_basename(),
+						"name": ext_name,
 						"description": "GDExtension",
 						"author": "",
 						"version": "",
 						"script": "",
 						"type": "gdextension",
 						"cfg_path": ext_rel,
-						"addon_dir": rel_dir if not rel_dir.is_empty() else ".",
+						"addon_dir": ext_addon_dir,
 						"structure": _classify_structure(ext_rel),
 					}
 				)
@@ -786,6 +817,27 @@ static func _scan_dir_for_addons(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+## Convert a plugin name to a valid directory name for addons/<name>.
+## Lowercases, replaces spaces/special chars with underscores, strips leading/trailing underscores.
+static func _sanitize_addon_name(plugin_name: String) -> String:
+	var s = plugin_name.strip_edges().to_lower()
+	var result := ""
+	for i in s.length():
+		var c = s[i]
+		if c == " " or c == "-" or c == "." or c == "/" or c == "\\":
+			result += "_"
+		elif (c >= "a" and c <= "z") or (c >= "0" and c <= "9") or c == "_":
+			result += c
+	result = result.strip_edges()
+	while result.begins_with("_"):
+		result = result.substr(1)
+	while result.ends_with("_"):
+		result = result.left(result.length() - 1)
+	if result.is_empty():
+		result = "unknown_addon"
+	return result
 
 
 static func repo_name_from_url(repo: String) -> String:

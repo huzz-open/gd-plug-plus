@@ -163,7 +163,9 @@ plugin.cfg (or the .gdextension file), using forward slashes.
 Example: if plugin.cfg is at `addons/my_plugin/plugin.cfg`,
 then `addon_dir = "addons/my_plugin"`.
 
-If plugin.cfg is at repo root, `addon_dir = "."`.
+If plugin.cfg is at repo root, `addon_dir = "addons/<sanitized_name>"` where
+`<sanitized_name>` is the plugin name lowercased with spaces/special chars replaced by underscores
+(mirrors `GitManager._sanitize_addon_name`).
 
 ### Step 4: Validate scan results
 
