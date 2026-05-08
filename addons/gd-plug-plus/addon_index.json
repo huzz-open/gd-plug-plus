@@ -11,5 +11,18 @@
 				"branch": "main"
 			}
 		]
+	},
+	{
+		"url": "https://github.com/pablogila/TileMapDual",
+		"addons": [
+			{
+				"name": "TileMapDual",
+				"description": "An automatic, real-time dual-grid tileset system for Godot!",
+				"addon_dir": "addons/TileMapDual",
+				"author": "@GilaPixel",
+				"type": "plugin",
+				"branch": "main"
+			}
+		]
 	}
 ]
